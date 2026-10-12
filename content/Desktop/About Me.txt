@@ -1,0 +1,7 @@
+About Me (placeholder)
+
+This file is a placeholder. Replace content/Desktop/About Me.txt in the repository with your own
+introduction: who you are, what you build, and what you're looking for.
+
+Every visitor gets their own copy of this desktop, so they can open, edit, move, or delete this
+file without affecting anyone else.

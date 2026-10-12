@@ -1,0 +1,8 @@
+CLAUDE.md
+package-lock.json
+claude_tmp/
+coverage/
+dist/
+playwright-report/
+test-results/
+.playwright-mcp/

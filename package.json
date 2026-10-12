@@ -1,0 +1,59 @@
+{
+  "name": "khalah-com",
+  "private": true,
+  "type": "module",
+  "description": "A macOS-style web desktop (Finder, Terminal, Browser) for khalah.com",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names web,api --prefix-colors cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "npm run dev --workspace @khalah/web",
+    "dev:api": "npm run dev --workspace @khalah/server",
+    "dev:stop": "tsx scripts/stop-dev-servers.mts",
+    "dev:check": "tsx scripts/check-dev-servers.mts",
+    "e2e:web": "npm run dev --workspace @khalah/web",
+    "e2e:api": "npm run start --workspace @khalah/server",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/shared && tsc -p apps/server && tsc -b apps/web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "neko:up": "docker compose --project-name khalah-com-neko --file infra/neko/compose.yaml --env-file .env up --detach --build --wait",
+    "neko:down": "docker compose --project-name khalah-com-neko --file infra/neko/compose.yaml --env-file .env down",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:coverage"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "26.6.5",
+    "@vitest/coverage-v8": "5.0.3",
+    "concurrently": "10.0.6",
+    "eslint": "10.12.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-jsdoc": "65.3.0",
+    "eslint-plugin-jsx-a11y-x": "0.2.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "fake-indexeddb": "6.2.5",
+    "globals": "17.13.0",
+    "jiti": "2.7.0",
+    "jsdom": "30.1.2",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "vitest": "5.0.3"
+  }
+}

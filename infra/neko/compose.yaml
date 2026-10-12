@@ -1,0 +1,27 @@
+# Local development neko browser (one shared container). Start/stop with `npm run neko:up` / `npm run neko:down`.
+# Every port is published on 127.0.0.1 only. Port numbers must match packages/shared/src/ports.mts
+# (a unit test enforces this).
+services:
+  neko:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: khalah-com/neko-chromium:local
+    shm_size: 2gb # Chromium renders a black screen without enough shared memory
+    restart: 'no'
+    ports:
+      - '127.0.0.1:5319:8080' # neko web client + REST API
+      - '127.0.0.1:5320:9222' # Chrome DevTools Protocol (via socat)
+      - '127.0.0.1:52000:52000/udp' # WebRTC media (single muxed port)
+      - '127.0.0.1:52000:52000/tcp' # WebRTC media TCP fallback
+    environment:
+      NEKO_DESKTOP_SCREEN: 1280x720@30
+      NEKO_MEMBER_PROVIDER: multiuser
+      NEKO_MEMBER_MULTIUSER_USER_PASSWORD: ${NEKO_USER_PASSWORD:?Set NEKO_USER_PASSWORD in .env}
+      NEKO_MEMBER_MULTIUSER_ADMIN_PASSWORD: ${NEKO_ADMIN_PASSWORD:?Set NEKO_ADMIN_PASSWORD in .env}
+      NEKO_SESSION_API_TOKEN: ${NEKO_API_TOKEN:?Set NEKO_API_TOKEN in .env}
+      NEKO_SESSION_IMPLICIT_HOSTING: 'true'
+      NEKO_WEBRTC_UDPMUX: '52000'
+      NEKO_WEBRTC_TCPMUX: '52000'
+      NEKO_WEBRTC_ICELITE: 'true'
+      NEKO_WEBRTC_NAT1TO1: 127.0.0.1
