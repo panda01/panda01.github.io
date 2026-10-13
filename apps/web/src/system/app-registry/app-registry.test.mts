@@ -4,7 +4,9 @@ import {
   appManifests,
   buildOpenWindowRequest,
   findAppManifest,
+  finderAppId,
   getInfoAppId,
+  quickLookAppId,
 } from './app-registry.mts';
 import type { AppManifest } from './app-manifest.types.mts';
 
@@ -41,6 +43,24 @@ describe('app registry', () => {
       'Resume.pdf Info',
     );
     expect(getInfoManifest.createWindowTitle(undefined)).toBe('Macintosh HD Info');
+    const finderManifest = requireAppManifest(finderAppId);
+    expect(finderManifest.createWindowTitle('/Users/guest/Projects')).toBe('Projects');
+    expect(finderManifest.createWindowTitle('/')).toBe('Macintosh HD');
+    expect(finderManifest.createWindowTitle(undefined)).toBe('guest');
+    const quickLookManifest = requireAppManifest(quickLookAppId);
+    expect(quickLookManifest.createWindowTitle('/Users/guest/Desktop/Resume.pdf')).toBe(
+      'Resume.pdf',
+    );
+    expect(quickLookManifest.createWindowTitle(undefined)).toBe('Quick Look');
+  });
+
+  it('puts Finder first in the Dock and lists only real apps as applications', () => {
+    expect(appManifests[0]?.id).toBe(finderAppId);
+    expect(
+      appManifests
+        .filter((appManifest) => appManifest.isListedAsApplication)
+        .map((appManifest) => appManifest.displayName),
+    ).toEqual(['Finder', 'About This Mac']);
   });
 
   it('loads every app’s window content on demand', async () => {

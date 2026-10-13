@@ -294,6 +294,8 @@ test.describe('Phase 1: desktop shell', () => {
     await page.keyboard.press('ArrowLeft');
     await expect(dockItems.first()).toBeFocused();
 
+    // Finder is the first Dock item since Phase 2; About This Mac is the second.
+    await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'About This Mac' })).toBeVisible();
   });

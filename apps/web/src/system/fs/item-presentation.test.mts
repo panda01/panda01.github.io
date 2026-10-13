@@ -3,9 +3,11 @@ import type { FileSystemItem } from './file-system.types.mts';
 import {
   chooseItemIconKind,
   chooseQuickLookPreviewKind,
+  computeRenameSelectionLength,
   describeItemKind,
   formatByteSize,
   formatItemTimestamp,
+  formatItemTimestampCompactly,
 } from './item-presentation.mts';
 
 /**
@@ -80,6 +82,12 @@ describe('formatItemTimestamp', () => {
       'Sunday, October 11, 2026 at 9:41 AM',
     );
   });
+
+  it('formats dates compactly for list view', () => {
+    expect(formatItemTimestampCompactly(new Date(2026, 9, 11, 9, 41).getTime())).toBe(
+      'Oct 11, 2026, 9:41 AM',
+    );
+  });
 });
 
 describe('chooseQuickLookPreviewKind', () => {
@@ -94,5 +102,13 @@ describe('chooseQuickLookPreviewKind', () => {
     [{ kind: 'link' as const, mimeType: 'text/plain' }, 'summary'],
   ])('previews %o as %s', (itemOverrides, expectedPreviewKind) => {
     expect(chooseQuickLookPreviewKind(buildItem(itemOverrides))).toBe(expectedPreviewKind);
+  });
+});
+
+describe('computeRenameSelectionLength', () => {
+  it('selects a file name without its extension, and whole folder and link names', () => {
+    expect(computeRenameSelectionLength(buildItem({ name: 'About Me.txt' }))).toBe(8);
+    expect(computeRenameSelectionLength(buildItem({ name: 'README' }))).toBe(6);
+    expect(computeRenameSelectionLength(buildItem({ kind: 'folder', name: 'v1.2' }))).toBe(4);
   });
 });

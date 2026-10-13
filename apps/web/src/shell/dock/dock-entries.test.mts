@@ -3,6 +3,7 @@ import {
   aboutThisMacAppId,
   appManifests,
   findAppManifest,
+  finderAppId,
   getInfoAppId,
 } from '../../system/app-registry/app-registry.mts';
 import type { DesktopWindowState } from '../../system/window-manager/window.types.mts';
@@ -63,11 +64,19 @@ describe('buildDockEntries', () => {
     );
 
     expect(dockEntries.map((dockEntry) => dockEntry.key)).toEqual([
+      `app-${finderAppId}`,
       `app-${aboutThisMacAppId}`,
       'minimized-w2',
       'trash',
     ]);
-    expect(findEntryOfKind(dockEntries, 'app').isRunning).toBe(true);
+    expect(
+      dockEntries
+        .filter((dockEntry) => dockEntry.kind === 'app')
+        .map((appEntry) => [appEntry.appManifest.id, appEntry.isRunning]),
+    ).toEqual([
+      [finderAppId, false],
+      [aboutThisMacAppId, true],
+    ]);
     expect(findEntryOfKind(dockEntries, 'trash').isFull).toBe(true);
   });
 
@@ -111,8 +120,8 @@ describe('Dock entry menus and labels', () => {
 
   it('labels each kind of entry', () => {
     expect(describeDockEntry(findEntryOfKind(entriesWithEverything, 'app'))).toEqual({
-      label: 'About This Mac',
-      accessibleName: 'About This Mac',
+      label: 'Finder',
+      accessibleName: 'Finder',
     });
     expect(describeDockEntry(findEntryOfKind(entriesWithEverything, 'minimized-window'))).toEqual({
       label: 'w2 title',

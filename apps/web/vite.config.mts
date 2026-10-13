@@ -16,6 +16,11 @@ const apiServerPort = resolvePortFromEnvironment(
 
 export default defineConfig({
   plugins: [viteReactPlugin()],
+  // Vite's start-up dependency scan only reads .js/.ts/.tsx/.mjs files, and this project's modules
+  // are .mts. Without this, libraries reached only through .mts files (dexie, fuse.js, react-pdf,
+  // the Finder icons, ...) were found while the app was in use, and Vite reloaded the whole page
+  // each time (the "desktop flashes" seen during the Phase 2 check).
+  optimizeDeps: { extensions: ['.mts'] },
   server: {
     host: localLoopbackHost,
     port: webApplicationPort,

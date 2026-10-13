@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext } from 'react';
 import type { JSX, ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { buildOpenWindowRequest, findAppManifest } from '../app-registry/app-registry.mts';
+import { selectTopmostWindowOfApp } from '../window-manager/window-manager-store.mts';
 import type { WindowManagerState } from '../window-manager/window-manager-store.mts';
 import type { DesktopSession } from './desktop-session.mts';
 
@@ -68,5 +69,30 @@ export function useOpenApp(): (appId: string, launchArgument?: string) => void {
       windowManagerStore.getState().openWindow(buildOpenWindowRequest(appManifest, launchArgument));
     },
     [windowManagerStore],
+  );
+}
+
+/**
+ * Returns a function that brings an app forward, the way clicking its Dock icon does: an app that
+ * can have several windows (Finder) brings its front-most window forward, restoring it if it was
+ * minimized, and opens a new window only when it has none. Single-window apps open or come forward.
+ * @returns `activateApp(appId)`; unknown app ids are ignored.
+ */
+export function useActivateApp(): (appId: string) => void {
+  const { windowManagerStore } = useDesktopSession();
+  const openApp = useOpenApp();
+  return useCallback(
+    (appId: string) => {
+      const appManifest = findAppManifest(appId);
+      const topmostAppWindow = selectTopmostWindowOfApp(windowManagerStore.getState(), appId);
+      const shouldBringExistingWindowForward =
+        appManifest?.allowsMultipleWindows === true && topmostAppWindow !== undefined;
+      if (shouldBringExistingWindowForward) {
+        windowManagerStore.getState().restoreWindow(topmostAppWindow.id);
+        return;
+      }
+      openApp(appId);
+    },
+    [windowManagerStore, openApp],
   );
 }

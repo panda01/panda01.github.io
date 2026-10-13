@@ -5,9 +5,11 @@ import {
   endTestDesktopSession,
   startTestDesktopSession,
 } from '../../test-support/desktop-test-session.tsx';
-import { aboutThisMacAppId } from '../app-registry/app-registry.mts';
+import { aboutThisMacAppId, finderAppId } from '../app-registry/app-registry.mts';
+import { selectFocusedWindow } from '../window-manager/window-manager-store.mts';
 import {
   DesktopSessionProvider,
+  useActivateApp,
   useDesktopSession,
   useOpenApp,
   useWindowManager,
@@ -70,5 +72,36 @@ describe('desktop session context', () => {
       result.current.openApp(aboutThisMacAppId);
     });
     expect(result.current.openWindowCount).toBe(1);
+  });
+
+  it('activating Finder brings its front-most window forward and opens one only when none exist', () => {
+    const { result } = renderHook(
+      () => ({
+        activateApp: useActivateApp(),
+        openWindowCount: useWindowManager((windowState) => windowState.windowStackOrder.length),
+      }),
+      { wrapper: SessionWrapper },
+    );
+    const windowActions = desktopSession.windowManagerStore.getState();
+
+    act(() => {
+      result.current.activateApp(finderAppId);
+    });
+    expect(result.current.openWindowCount).toBe(1);
+    const finderWindow = selectFocusedWindow(desktopSession.windowManagerStore.getState());
+    expect(finderWindow?.appId).toBe(finderAppId);
+
+    act(() => {
+      if (finderWindow !== undefined) {
+        windowActions.minimizeWindow(finderWindow.id);
+      }
+      result.current.activateApp(finderAppId);
+      result.current.activateApp(aboutThisMacAppId);
+      result.current.activateApp(finderAppId);
+    });
+    expect(result.current.openWindowCount).toBe(2);
+    expect(selectFocusedWindow(desktopSession.windowManagerStore.getState())?.id).toBe(
+      finderWindow?.id,
+    );
   });
 });

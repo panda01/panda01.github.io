@@ -1,13 +1,18 @@
 import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { aboutThisMacAppId, getInfoAppId } from '../../system/app-registry/app-registry.mts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  aboutThisMacAppId,
+  finderAppId,
+  getInfoAppId,
+} from '../../system/app-registry/app-registry.mts';
 import { DesktopSessionProvider } from '../../system/desktop-session/desktop-session-context.tsx';
 import type { DesktopSession } from '../../system/desktop-session/desktop-session.mts';
 import {
   endTestDesktopSession,
   startTestDesktopSession,
 } from '../../test-support/desktop-test-session.tsx';
+import { useSpotlightStore } from '../spotlight/spotlight-store.mts';
 import {
   performDesktopShortcutAction,
   useDesktopKeyboardShortcuts,
@@ -20,6 +25,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  useSpotlightStore.getState().closeSpotlight();
   await endTestDesktopSession(desktopSession);
 });
 
@@ -68,46 +74,58 @@ function pressKey(eventTarget: EventTarget, keyboardEventInit: KeyboardEventInit
 }
 
 describe('performDesktopShortcutAction', () => {
-  it('does nothing when no window is focused', () => {
-    expect(performDesktopShortcutAction('close-window', desktopSession.windowManagerStore)).toBe(
-      false,
-    );
+  it('does nothing to windows when no window is focused', () => {
+    expect(
+      performDesktopShortcutAction('close-window', desktopSession.windowManagerStore, vi.fn()),
+    ).toBe(false);
   });
 
   it('closes, minimizes and quits the focused window or app', () => {
     const windowManagerStore = desktopSession.windowManagerStore;
     const firstInfoWindowId = openTestWindow(getInfoAppId, true);
 
-    expect(performDesktopShortcutAction('minimize-window', windowManagerStore)).toBe(true);
+    expect(performDesktopShortcutAction('minimize-window', windowManagerStore, vi.fn())).toBe(true);
     expect(windowManagerStore.getState().windowsById[firstInfoWindowId]?.isMinimized).toBe(true);
 
     windowManagerStore.getState().restoreWindow(firstInfoWindowId);
-    expect(performDesktopShortcutAction('close-window', windowManagerStore)).toBe(true);
+    expect(performDesktopShortcutAction('close-window', windowManagerStore, vi.fn())).toBe(true);
     expect(windowManagerStore.getState().windowsById[firstInfoWindowId]).toBeUndefined();
 
     openTestWindow(aboutThisMacAppId, false);
-    expect(performDesktopShortcutAction('quit-app', windowManagerStore)).toBe(true);
+    expect(performDesktopShortcutAction('quit-app', windowManagerStore, vi.fn())).toBe(true);
     expect(windowManagerStore.getState().windowStackOrder).toEqual([]);
   });
 
   it('opens a new window only for apps that allow several windows', () => {
     const windowManagerStore = desktopSession.windowManagerStore;
     openTestWindow(aboutThisMacAppId, false);
-    expect(performDesktopShortcutAction('new-window', windowManagerStore)).toBe(false);
+    expect(performDesktopShortcutAction('new-window', windowManagerStore, vi.fn())).toBe(false);
 
     openTestWindow(getInfoAppId, true);
-    expect(performDesktopShortcutAction('new-window', windowManagerStore)).toBe(true);
+    expect(performDesktopShortcutAction('new-window', windowManagerStore, vi.fn())).toBe(true);
     expect(windowManagerStore.getState().windowStackOrder).toHaveLength(3);
   });
 
-  it('leaves the app switcher and Spotlight for later phases', () => {
+  it('opens a new Finder window when no window is focused', () => {
+    const windowManagerStore = desktopSession.windowManagerStore;
+
+    expect(performDesktopShortcutAction('new-window', windowManagerStore, vi.fn())).toBe(true);
+
+    expect(Object.values(windowManagerStore.getState().windowsById)[0]?.appId).toBe(finderAppId);
+  });
+
+  it('toggles Spotlight with or without a focused window, and leaves the app switcher for later', () => {
+    const toggleSpotlight = vi.fn();
+
+    expect(
+      performDesktopShortcutAction('spotlight', desktopSession.windowManagerStore, toggleSpotlight),
+    ).toBe(true);
     openTestWindow(aboutThisMacAppId, false);
-    expect(performDesktopShortcutAction('app-switcher', desktopSession.windowManagerStore)).toBe(
-      false,
-    );
-    expect(performDesktopShortcutAction('spotlight', desktopSession.windowManagerStore)).toBe(
-      false,
-    );
+    expect(
+      performDesktopShortcutAction('app-switcher', desktopSession.windowManagerStore, vi.fn()),
+    ).toBe(false);
+
+    expect(toggleSpotlight).toHaveBeenCalledOnce();
   });
 });
 
@@ -139,10 +157,10 @@ describe('useDesktopKeyboardShortcuts', () => {
     document.body.append(textField);
 
     pressKey(textField, { code: 'KeyW', altKey: true });
-    const spotlightKeyPress = pressKey(window, { code: 'Space', altKey: true });
+    const appSwitcherKeyPress = pressKey(window, { code: 'Tab', altKey: true });
     pressKey(window, { code: 'KeyW' });
 
-    expect(spotlightKeyPress.defaultPrevented).toBe(false);
+    expect(appSwitcherKeyPress.defaultPrevented).toBe(false);
     expect(desktopSession.windowManagerStore.getState().windowStackOrder).toHaveLength(1);
     textField.remove();
   });
@@ -166,5 +184,19 @@ describe('useDesktopKeyboardShortcuts', () => {
     desktopSession.windowManagerStore.getState().restoreWindow(aboutWindowId);
     pressKey(window, { code: 'KeyW', metaKey: true });
     expect(desktopSession.windowManagerStore.getState().windowStackOrder).toHaveLength(1);
+  });
+
+  it('opens Spotlight with ⌥Space', () => {
+    renderHook(
+      () => {
+        useDesktopKeyboardShortcuts(false);
+      },
+      { wrapper: SessionWrapper },
+    );
+
+    const spotlightKeyPress = pressKey(window, { code: 'Space', altKey: true });
+
+    expect(spotlightKeyPress.defaultPrevented).toBe(true);
+    expect(useSpotlightStore.getState().isSpotlightOpen).toBe(true);
   });
 });

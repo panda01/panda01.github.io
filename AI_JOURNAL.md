@@ -4,6 +4,193 @@ Newest entries first.
 
 ---
 
+## 2026-10-12 17:40 EDT — Fix: whole desktop "flashed" in development (Vite reloading the page)
+
+**Intent:** During the Phase 2 check the user saw the whole desktop flash around clicking Documents. Find the cause and fix it; the user approved the config change.
+
+**Cause:**
+
+- **The reloads:** Vite's development server pre-bundles libraries when it starts, but its start-up scan only reads `.js/.jsx/.ts/.tsx/.mjs` files (`JS_TYPES_RE` / `isScannable` in Vite's source), and this project's modules are `.mts`. Libraries reached only through `.mts` files were discovered while the app was in use, and Vite then force-reloaded the page. The reload shows the boot screen, which is the flash.
+- **On a fresh cache it happened three times** (isolated Vite instance with its own empty cache, driven by Playwright):
+  1. on load (dexie, fake-indexeddb, fuse.js, zustand/vanilla);
+  2. when Finder first opened (its MUI icons, loaded through `app-registry.mts`);
+  3. when Quick Look first opened (react-pdf).
+- **The user's own server:** started 17:21:23 and rewrote its dependency bundles at 17:22:56, while the site was in use.
+- **Scope:** development only; production builds are unaffected. The same reload explains the one-off "element was detached" failure in the first Phase 2 E2E run.
+
+**Change:**
+
+- **`apps/web/vite.config.mts`:** added `optimizeDeps: { extensions: ['.mts'] }`, with a comment explaining why. Checked on a throwaway server that runs the real config with an empty cache: 0 reloads through load, Finder, Documents, Quick Look and Spotlight (3 before).
+- **`apps/web/src/apps/finder/Finder.test.tsx`:** the test "duplicates, shows info, trashes, puts back, deletes and empties the Trash" timed out once when the machine was busy (load average ~19; it takes ~0.45s normally). It was split into three shorter tests that check the same behaviour:
+  - "duplicates an item, shows its info, and moves it to the Trash";
+  - "puts items in the Trash back, or deletes them immediately";
+  - "empties the Trash from its menu or its Empty button".
+
+  No functions changed.
+
+**Verification:**
+
+- `npm run verify` exit 0: 402 tests; coverage 99.71 / 97.39 / 99.65 / 99.71.
+- `npx playwright test`: 70/70.
+- The user's running dev server was left running and stayed healthy.
+- Throwaway servers on port 5337 were stopped; test ports free.
+
+---
+
+## 2026-10-12 17:25 EDT — Phase 2 built: Finder, Quick Look, Spotlight, drag-and-drop (awaiting user check)
+
+**Intent:** Build Phase 2 so the red E2E spec from 15:40 passes: Finder (icon/list/column views, sidebar, path bar, history, search, file management), Quick Look (text, image, PDF), Spotlight (Fuse.js), and drag-and-drop (@dnd-kit/core) between Finder, the desktop and the Trash. Visitors can download files but never upload them.
+
+**Gate results:**
+
+- **`npm run verify`: exit 0.**
+  - 400 unit tests in 51 files (Phase 1 had 291).
+  - Coverage 99.71 / 97.39 / 99.65 / 99.71.
+- **`npx playwright test`: 70/70.**
+  - Phase 0, 1 and 2 specs in Chromium and WebKit, plus neko.
+  - The Phase 2 spec was also repeated 3× per browser: 96/96.
+- **Manual walkthrough** (`claude_tmp/phase-2/manual-walkthrough.mts`, Playwright against `npm run dev`, light and dark): health `{"status":"ok"}` and homepage sniff test first, then 25 steps, 0 console problems. Results:
+  - the downloaded file matches `content/Desktop/About Me.txt`;
+  - a 301-item folder renders in ~130 ms and scrolls in both views;
+  - the PDF has 2 pages with working links and re-renders sharp at zoom;
+  - dark mode renders correctly.
+- Ports free afterwards; no neko container running.
+
+**Bugs found and fixed while building:**
+
+1. **PDF never appeared** (E2E + debugging): react-pdf 11 loads through React Suspense by default. The PDF bytes were prepared inside the suspended viewer, so every retry restarted the load and pdf.js workers were created in a loop. Fixed with `suspense={false}` in `PdfDocumentView.adapter.tsx` (documented there).
+2. **axe "list" violation:** the Finder sidebar put `ListItemButton` (a div) straight into `ul`. Each entry is now wrapped in `ListItem`.
+3. **Spotlight results unreadable** (walkthrough): the results panel was transparent over windows. It is now a translucent, blurred panel matching the search box.
+4. **Menus shrank to an empty box while fading out** (walkthrough): menu content was cleared when the menu closed. Fixed with the new `useMenuState` hook, which keeps the content until the next opening. Applied to the Finder, desktop, menu bar and Dock menus; the last two are Phase 1 code with the same bug.
+5. **Column view:** it did not scroll to the newest column or the file preview. It now scrolls to the end when the columns change and once the preview loads.
+6. **Spotlight too loose:** at a Fuse threshold of 0.4, "finder" also listed every folder, because their kind reads "Folder". The threshold is now 0.3; "rsume", "projct" and "linkdin" still find the right item.
+7. **Stale items on navigation:** `useLiveQueryResult` showed the previous folder's items until a new query answered. It now shows the initial value until the new query answers.
+
+**Tests changed because the functionality changed** (none were skipped or removed without a replacement):
+
+- **`DesktopSurface.test.tsx`:** "does not offer to open files yet" is replaced by "opens files in Quick Look and folders (through aliases too) in Finder". Added tests for Space/arrow keys/Quick Look and for inline rename.
+- **`Dock.test.tsx`:**
+  - "clicking the Trash does nothing until Finder exists" is now "clicking the Trash opens it in Finder".
+  - The Dock has 3 buttons instead of 2.
+  - Arrow-key test variables renamed, since Finder is now first.
+- **`dock-entries.test.mts`:** Finder is now the first app entry.
+- **`use-desktop-keyboard-shortcuts.test.tsx`:**
+  - Spotlight (⌥Space) is now handled, so the "unhandled shortcut" example is ⌥Tab.
+  - Added tests: ⌥N opens Finder when nothing is focused, and ⌥Space opens Spotlight.
+- **`menu-bar-menus.test.mts`:** the File menu now starts with New Finder Window.
+- **`e2e/phase-1-desktop.spec.mts`:** the Dock keyboard test presses → once more before Enter, because Finder is now the first Dock item and About This Mac the second.
+- **`desktop-actions.test.mts` was moved, not dropped:**
+  - Its createUntitledFolder and openUrlInNewBrowserTab tests now live in `system/item-actions/item-actions.test.mts`.
+  - Its menu tests now live in `item-menu.test.mts`, for the new shared menus.
+  - Web-link opening is tested in `use-item-actions.test.tsx` and `DesktopSurface.test.tsx`.
+
+**Choices within the agreed decisions** (flagged for the user):
+
+- **No keyboard drag sensor:** dnd-kit's keyboard drag uses Space/Enter, which already mean Quick Look/Open. Keyboard users move items with the menus. Mouse drags start after 4px; touch drags after a 250ms press.
+- **Desktop New Folder:** still creates "untitled folder" without the inline name field (the Phase 1 behaviour its E2E test checks). Finder's New Folder opens the name field.
+- **Selection:** single selection only (no ⌘/⇧ multi-select yet).
+- **Empty Trash:** no confirmation, the same as the Phase 1 Dock.
+- **Default imports:** `fuse.js` only has a default export. MUI icons use per-icon path imports, as the plan says. The pdf.js worker uses Vite's `?url` default import.
+
+**Files added:**
+
+- **`apps/web/src/system/item-actions/item-actions.mts`:**
+  - `untitledFolderName` and `createUntitledFolder`, moved from `shell/desktop/desktop-actions.mts`;
+  - `openUrlInNewBrowserTab`, moved from the same file;
+  - `ItemOpeningPlan`, `planItemOpening`, `resolveItemOpeningPlan`;
+  - `downloadFileToComputer`;
+  - `FileDropDestination`, `FileDropOperation`, `decideFileDropOperation`, `performFileDrop`;
+  - `renameItemFromField`.
+
+  Test: `item-actions.test.mts`.
+
+- **`apps/web/src/system/item-actions/item-menu.mts`:** `ItemMenuActionId`, `FolderBackgroundMenuActionId`, `ItemMenuAction`, `listItemMenuActions`, `listFolderBackgroundMenuActions`. Test: `item-menu.test.mts`.
+- **`apps/web/src/system/item-actions/quick-look-controls.mts`:** `findVisibleQuickLookWindow`, `openQuickLookForItem`, `toggleQuickLookForItem`, `followSelectionInQuickLook`. Test: `quick-look-controls.test.mts`.
+- **`apps/web/src/system/item-actions/use-item-actions.mts`:** `ItemActionOptions`, `ItemActions`, `useItemActions` (openItem, toggleQuickLook, runItemMenuAction, renameItem, createFolderIn, emptyTrash). Test: `use-item-actions.test.tsx`.
+- **`apps/web/src/system/hooks/`:** `use-value-stable-for-key.mts` (`useValueStableForKey`), `use-element-width.mts` (`useElementWidth`), `use-menu-state.mts` (`MenuState`, `useMenuState`). Test: `layout-hooks.test.mts`.
+- **`apps/web/src/shell/drag-and-drop/file-drag-and-drop.mts`:**
+  - `dropTargetIdAttributeName`, `DraggedFileItemData`, `FileDropTargetData`;
+  - `buildDraggableItemId`, `buildDropTargetId`;
+  - `findItemDropDestination`, `readDraggedItem`, `readDropDestination`;
+  - `createTopmostDropTargetCollisionDetection`, `describeDropDestination`;
+  - `fileDragAnnouncements`, `fileDragScreenReaderInstructions`.
+- **`apps/web/src/shell/drag-and-drop/` (other files):**
+  - `use-file-drag-and-drop.mts`: `DraggableFileItem`, `FileDropTarget`, `useDraggableFileItem`, `useFileDropTarget`.
+  - `FileDragAndDropProvider.tsx`: `FileDragAndDropProvider`, `DraggedItemPreview`.
+  - `computer-file-drop-blocker.mts`: `isDragFromComputerFiles`, `blockFileDropsFromComputer`.
+  - Test: `drag-and-drop.test.tsx`.
+- **`apps/web/src/shell/item-views/`:**
+  - `FileItemTile.tsx`: `FileItemTileAppearance`, `FileItemTileProps`, `FileItemTile`.
+  - `InlineRenameField.tsx`: `InlineRenameFieldProps`, `InlineRenameField`.
+  - `item-view-navigation.mts`: `itemViewAttributeName`, `itemViewMarker`, `itemPathAttributeName`, `SelectionMoveDirection`, `findSelectionMoveDirection`, `findNeighborItemElement`.
+  - `use-file-item-interactions.mts`: `FileItemInteractionHandlers`, `FileItemElementProps`, `FileItemInteractions`, `useFileItemInteractions`.
+  - `menu-entries.tsx`: `renderMenuEntries`.
+  - Test: `item-views.test.tsx`.
+- **`apps/web/src/shell/spotlight/`:**
+  - `Spotlight.tsx`: `Spotlight`, `SpotlightSearchPanel`.
+  - `spotlight-search.mts`: `spotlightResultLimit`, `SpotlightEntry`, `buildSpotlightEntries`, `createSpotlightSearch`.
+  - `spotlight-store.mts`: `SpotlightState`, `useSpotlightStore`.
+  - Test: `Spotlight.test.tsx`.
+- **`apps/web/src/apps/finder/` (components):**
+  - `Finder.tsx`: `Finder`, `FinderFolderBackground`, `FinderTrashBanner`, `FinderContextMenu`.
+  - `FinderToolbar.tsx`: `FinderToolbar`.
+  - `FinderSidebar.tsx`: `finderFavoriteLocations`, `finderTrashLocation`, `FinderSidebar`.
+  - `FinderPathBar.tsx`: `FinderPathBar`.
+  - `FinderIconView.tsx`: `FinderIconView`.
+  - `FinderListView.tsx`: `toggleSortOrder`, `FinderListView`, `FinderListRow`.
+  - `FinderColumnView.tsx`: `FinderColumnView`, `FinderColumn`, `FinderColumnEntry`, `FinderColumnPreview`.
+- **`apps/web/src/apps/finder/` (logic and tests):**
+  - `finder-navigation.mts`: `FinderNavigationState`, `finderNavigationReducer`, `selectCurrentFolderPath`, `canGoBack`, `canGoForward`.
+  - `finder-contents.mts`: `FinderViewMode`, `FinderSortOrder`, `listVisibleItems`, `sortItemsForListView`, `searchItemsInFolder`, `listColumnFolderPaths`, `describeItemCount`.
+  - `finder-view.types.mts`.
+  - Tests: `finder-logic.test.mts`, `Finder.test.tsx`.
+- **`apps/web/src/apps/quick-look/`:**
+  - `QuickLook.tsx`: `QuickLook`, `QuickLookPreview`, `TextFilePreview`, `ImageFilePreview`, `PdfFilePreview`, `ItemSummaryPreview`.
+  - `quick-look-content.mts`: `decodeTextContent`, `createDataUrl`, `buildContentVersionKey`.
+  - `PdfDocumentView.adapter.tsx`: `PdfDocumentView`, the thin react-pdf wrapper.
+  - Test: `QuickLook.test.tsx`.
+
+**Files changed:**
+
+- **`system/fs/`:**
+  - `path-utilities.mts`: added `rootFolderDisplayName`, `trashFolderDisplayName`, `isHiddenItemName`, `getFolderDisplayName`, `listPathAndAncestors`.
+  - `virtual-file-system.mts`: added `listAllItems`; `readFileBytes` now returns `Uint8Array<ArrayBuffer>`.
+  - `item-presentation.mts`: added `QuickLookPreviewKind`, `chooseQuickLookPreviewKind`, `formatItemTimestampCompactly`, `computeRenameSelectionLength`.
+  - Tests updated for all three.
+- **`system/hooks/use-live-query-result.mts`:** `StoredQueryResult`; resets when the query changes. Tests added.
+- **`system/window-manager/window-manager-store.mts`:**
+  - added `updateWindowTitleAndLaunchArgument` and `selectTopmostWindowOfApp`;
+  - `openWindow` switches a single-window app to a new launch argument and title.
+
+  Tests added.
+
+- **`system/app-registry/`:**
+  - `app-manifest.types.mts`: added `isListedAsApplication`.
+  - `app-registry.mts`: added `finderAppId`, `quickLookAppId`, `loadFinderWindowContent`, `loadQuickLookWindowContent`, `createFinderWindowTitle`, `createQuickLookWindowTitle`; Finder (first in the Dock) and Quick Look manifests.
+  - Tests updated.
+- **`system/desktop-session/desktop-session-context.tsx`:** added `useActivateApp`. Test added.
+- **`shell/icons/system-icons.tsx`:** added `FinderAppIcon` and `QuickLookAppIcon` (original artwork). Tests updated.
+- **`shell/DesktopShell.tsx`:** wraps the desktop, windows and Dock in `FileDragAndDropProvider`, renders `Spotlight`, and installs `blockFileDropsFromComputer`.
+- **`shell/desktop/DesktopSurface.tsx`:** rewritten on `FileItemTile`, the shared item actions and menus, drag-and-drop, inline rename and `useMenuState`; added `desktopPlaceId`.
+- **`shell/dock/Dock.tsx`:**
+  - Finder is brought forward with `useActivateApp`;
+  - the Trash opens in Finder;
+  - added `DockTrashDropTarget`;
+  - uses `useMenuState`.
+- **`shell/menu-bar/`:**
+  - `MenuBar.tsx`: Spotlight button, New Finder Window, `useMenuState`.
+  - `menu-bar-menus.mts`: `new-finder-window` action, `chooseNewFolderLocation`.
+- **`shell/keyboard/use-desktop-keyboard-shortcuts.mts`:** `performDesktopShortcutAction` takes `toggleSpotlight`; ⌥Space toggles Spotlight; ⌥N opens a Finder window when nothing is focused.
+- **`apps/web/package.json`, `package-lock.json`:** the 4 libraries above.
+
+**Files removed:**
+
+- `shell/desktop/DesktopIcon.tsx`: replaced by `shell/item-views/FileItemTile.tsx`.
+- `shell/desktop/desktop-actions.mts` and its test: moved to `system/item-actions/`, as listed above.
+- `shell/desktop/desktop-menu.mts`: replaced by `system/item-actions/item-menu.mts`.
+
+---
+
 ## 2026-10-12 15:40 EDT — Phase 2 started: decisions, libraries, and the failing E2E spec (red)
 
 **Intent:** Start Phase 2 (Finder, Quick Look, Spotlight) as the plan's workflow requires: decisions first, then the E2E spec written before any code, run to confirm it fails for the right reason.

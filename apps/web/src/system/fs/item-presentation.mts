@@ -1,4 +1,5 @@
 import type { FileSystemItem } from './file-system.types.mts';
+import { splitNameAndExtension } from './mime-types.mts';
 
 /** Which original icon artwork represents an item (see shell/icons/item-icons.tsx). */
 export type ItemIconKind =
@@ -113,4 +114,26 @@ export function formatItemTimestamp(timestamp: number, locale = 'en-US'): string
   return new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(
     new Date(timestamp),
   );
+}
+
+/**
+ * Formats a timestamp compactly for Finder's list view, for example "Oct 11, 2026, 9:41 AM".
+ * @param timestamp - Milliseconds since the Unix epoch.
+ * @param locale - The locale to format for.
+ * @returns The formatted date and time.
+ */
+export function formatItemTimestampCompactly(timestamp: number, locale = 'en-US'): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(timestamp),
+  );
+}
+
+/**
+ * Works out how much of a name to select when renaming starts: a file's name without its extension
+ * (like Finder, so typing keeps ".txt"), or a folder's or link's whole name.
+ * @param item - The item being renamed.
+ * @returns How many characters, from the start of the name, to select.
+ */
+export function computeRenameSelectionLength(item: FileSystemItem): number {
+  return item.kind === 'file' ? splitNameAndExtension(item.name).stem.length : item.name.length;
 }

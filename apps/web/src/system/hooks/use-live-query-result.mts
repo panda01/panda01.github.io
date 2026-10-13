@@ -8,10 +8,21 @@ export interface LiveQueryState<QueryResult> {
   isLoaded: boolean;
 }
 
+/** The stored result, remembering which query produced it. */
+interface StoredQueryResult<QueryResult> {
+  /** The latest successful answer, wrapped so "no answer yet" is distinct from any value. */
+  latestAnswer: { value: QueryResult } | undefined;
+  error: unknown;
+  isLoaded: boolean;
+  producedByQuery: () => Promise<QueryResult>;
+}
+
 /**
  * Runs a database query and runs it again after every committed database write (in this tab or
  * another tab), so components always show the current filesystem. Pass a query memoized with
- * `useCallback`; a new query function restarts the subscription.
+ * `useCallback`; a new query function restarts the subscription, and until the new query has
+ * answered the initial value is shown again (so a Finder window that moves to another folder never
+ * shows the previous folder's items).
  *
  * Why not Dexie's `liveQuery`: it re-runs only when data it saw being read changes, and that
  * tracking was lost through the filesystem service's many nested `await`s (Phase 1 E2E: new folders
@@ -26,10 +37,11 @@ export function useLiveQueryResult<QueryResult>(
   runQuery: () => Promise<QueryResult>,
   initialValue: QueryResult,
 ): LiveQueryState<QueryResult> {
-  const [queryState, setQueryState] = useState<LiveQueryState<QueryResult>>({
-    value: initialValue,
+  const [storedResult, setStoredResult] = useState<StoredQueryResult<QueryResult>>({
+    latestAnswer: undefined,
     error: undefined,
     isLoaded: false,
+    producedByQuery: runQuery,
   });
 
   useEffect(() => {
@@ -50,15 +62,24 @@ export function useLiveQueryResult<QueryResult>(
       runQuery().then(
         (latestValue) => {
           if (isNewestRun()) {
-            setQueryState({ value: latestValue, error: undefined, isLoaded: true });
+            setStoredResult({
+              latestAnswer: { value: latestValue },
+              error: undefined,
+              isLoaded: true,
+              producedByQuery: runQuery,
+            });
           }
         },
         (queryError: unknown) => {
           if (isNewestRun()) {
-            setQueryState((previousState) => ({
-              ...previousState,
+            setStoredResult((previousResult) => ({
+              latestAnswer:
+                previousResult.producedByQuery === runQuery
+                  ? previousResult.latestAnswer
+                  : undefined,
               error: queryError,
               isLoaded: true,
+              producedByQuery: runQuery,
             }));
           }
         },
@@ -73,5 +94,13 @@ export function useLiveQueryResult<QueryResult>(
     };
   }, [runQuery]);
 
-  return queryState;
+  const isResultFromCurrentQuery = storedResult.producedByQuery === runQuery;
+  if (!isResultFromCurrentQuery) {
+    return { value: initialValue, error: undefined, isLoaded: false };
+  }
+  return {
+    value: storedResult.latestAnswer === undefined ? initialValue : storedResult.latestAnswer.value,
+    error: storedResult.error,
+    isLoaded: storedResult.isLoaded,
+  };
 }

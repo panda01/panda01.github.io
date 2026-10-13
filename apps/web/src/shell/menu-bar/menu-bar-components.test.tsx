@@ -1,7 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { aboutThisMacAppId } from '../../system/app-registry/app-registry.mts';
+import { aboutThisMacAppId, finderAppId } from '../../system/app-registry/app-registry.mts';
 import type { DesktopSession } from '../../system/desktop-session/desktop-session.mts';
 import { useDesktopNoticeStore } from '../../system/notices/desktop-notice-store.mts';
 import {
@@ -10,6 +10,7 @@ import {
   startTestDesktopSession,
 } from '../../test-support/desktop-test-session.tsx';
 import type { FullScreenControls } from '../keyboard/use-full-screen-state.mts';
+import { useSpotlightStore } from '../spotlight/spotlight-store.mts';
 import { MenuBar } from './MenuBar.tsx';
 import { MenuBarClock } from './MenuBarClock.tsx';
 
@@ -131,6 +132,36 @@ describe('MenuBar', () => {
 
     await vi.waitFor(async () => {
       expect(await desktopSession.fileSystem.exists('/Users/guest/Desktop/untitled folder')).toBe(
+        true,
+      );
+    });
+  });
+
+  it('opens Spotlight and new Finder windows, and creates folders in the focused Finder window', async () => {
+    renderMenuBar();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Spotlight' }));
+    expect(useSpotlightStore.getState().isSpotlightOpen).toBe(true);
+    act(() => {
+      useSpotlightStore.getState().closeSpotlight();
+    });
+
+    await chooseMenuItem('File', 'New Finder Window');
+    const finderWindow = Object.values(desktopSession.windowManagerStore.getState().windowsById)[0];
+    expect(finderWindow?.appId).toBe(finderAppId);
+    act(() => {
+      desktopSession.windowManagerStore
+        .getState()
+        .updateWindowTitleAndLaunchArgument(
+          finderWindow?.id ?? '',
+          'Documents',
+          '/Users/guest/Documents',
+        );
+    });
+
+    await chooseMenuItem('File', 'New Folder');
+    await vi.waitFor(async () => {
+      expect(await desktopSession.fileSystem.exists('/Users/guest/Documents/untitled folder')).toBe(
         true,
       );
     });

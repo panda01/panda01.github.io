@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildMenuBarMenus } from './menu-bar-menus.mts';
+import type { DesktopWindowState } from '../../system/window-manager/window.types.mts';
+import { buildMenuBarMenus, chooseNewFolderLocation } from './menu-bar-menus.mts';
 import type { MenuBarMenu } from './menu-bar-menus.mts';
 
 /**
@@ -51,9 +52,12 @@ describe('buildMenuBarMenus', () => {
     expect(findMenu(menuBarMenus, 'window').items.every((menuItem) => menuItem.isDisabled)).toBe(
       true,
     );
-    expect(findMenu(menuBarMenus, 'file').items.map((menuItem) => menuItem.isDisabled)).toEqual([
-      false,
-      true,
+    expect(
+      findMenu(menuBarMenus, 'file').items.map((menuItem) => [menuItem.label, menuItem.isDisabled]),
+    ).toEqual([
+      ['New Finder Window', false],
+      ['New Folder', false],
+      ['Close Window', true],
     ]);
   });
 
@@ -73,5 +77,39 @@ describe('buildMenuBarMenus', () => {
       false,
     );
     expect(findMenu(menuBarMenus, 'system').items[1]?.label).toBe('Exit Full Screen');
+  });
+});
+
+describe('chooseNewFolderLocation', () => {
+  /**
+   * Builds a window of an app showing a launch argument.
+   * @param appId - The window's app.
+   * @param launchArgument - What it shows.
+   * @returns The window state.
+   */
+  function buildWindow(appId: string, launchArgument?: string): DesktopWindowState {
+    return {
+      id: 'w',
+      appId,
+      title: 'w',
+      bounds: { x: 0, y: 0, width: 300, height: 200 },
+      isMinimized: false,
+      isZoomed: false,
+      ...(launchArgument === undefined ? {} : { launchArgument }),
+    };
+  }
+
+  it('uses the focused Finder window’s folder, otherwise the desktop, never the Trash', () => {
+    expect(chooseNewFolderLocation(buildWindow('finder', '/Users/guest/Projects'))).toBe(
+      '/Users/guest/Projects',
+    );
+    expect(chooseNewFolderLocation(undefined)).toBe('/Users/guest/Desktop');
+    expect(chooseNewFolderLocation(buildWindow('get-info', '/Users/guest/Projects'))).toBe(
+      '/Users/guest/Desktop',
+    );
+    expect(chooseNewFolderLocation(buildWindow('finder', '/Users/guest/.Trash'))).toBe(
+      '/Users/guest/Desktop',
+    );
+    expect(chooseNewFolderLocation(buildWindow('finder'))).toBe('/Users/guest/Desktop');
   });
 });

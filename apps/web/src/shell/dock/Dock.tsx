@@ -1,22 +1,29 @@
 import { Fragment, useCallback, useRef, useState } from 'react';
-import type { JSX, MouseEvent } from 'react';
+import type { JSX, MouseEvent, ReactNode } from 'react';
 import { Box, Divider, Menu, MenuItem } from '@mui/material';
 import { useMotionValue } from 'motion/react';
 import { useShallow } from 'zustand/react/shallow';
-import { appManifests, findAppManifest } from '../../system/app-registry/app-registry.mts';
 import {
+  appManifests,
+  findAppManifest,
+  finderAppId,
+} from '../../system/app-registry/app-registry.mts';
+import {
+  useActivateApp,
   useDesktopSession,
   useOpenApp,
   useWindowManager,
 } from '../../system/desktop-session/desktop-session-context.tsx';
 import { trashFolderPath } from '../../system/fs/path-utilities.mts';
 import { useLiveQueryResult } from '../../system/hooks/use-live-query-result.mts';
+import { useMenuState } from '../../system/hooks/use-menu-state.mts';
 import {
   describeFailedAction,
   useDesktopNoticeStore,
 } from '../../system/notices/desktop-notice-store.mts';
 import { translucentSurfaceBackdropFilter } from '../../system/theme/desktop-theme.mts';
 import { selectWindowsInStackOrder } from '../../system/window-manager/window-manager-store.mts';
+import { useFileDropTarget } from '../drag-and-drop/use-file-drag-and-drop.mts';
 import { TrashCanIcon } from '../icons/system-icons.tsx';
 import {
   buildDockEntries,
@@ -33,11 +40,13 @@ const launchBounceDurationInMilliseconds = 800;
 /**
  * The Dock: apps, minimized windows and the Trash along the bottom of the screen, with hover
  * magnification, running indicators, launch bounce, right-click menus, and arrow-key navigation.
+ * Clicking the Trash opens it in Finder, and items dragged onto it are moved to the Trash.
  * @returns The Dock.
  */
 export function Dock(): JSX.Element {
   const { fileSystem, windowManagerStore } = useDesktopSession();
   const openApp = useOpenApp();
+  const activateApp = useActivateApp();
   const showNotice = useDesktopNoticeStore((noticeState) => noticeState.showNotice);
   const stackedWindows = useWindowManager(useShallow(selectWindowsInStackOrder));
   const pointerX = useMotionValue(Number.POSITIVE_INFINITY);
@@ -45,10 +54,12 @@ export function Dock(): JSX.Element {
   const [focusableItemIndex, setFocusableItemIndex] = useState(0);
   // Only the item's key is remembered, so an open menu always reflects the item's current state
   // (for example "Empty Trash" becoming available while the menu is open).
-  const [openContextMenu, setOpenContextMenu] = useState<{
-    anchorElement: HTMLElement;
-    dockEntryKey: string;
-  }>();
+  const {
+    menuContent: openContextMenu,
+    isMenuOpen: isContextMenuOpen,
+    showMenu: showContextMenu,
+    hideMenu: hideContextMenu,
+  } = useMenuState<{ anchorElement: HTMLElement; dockEntryKey: string }>();
   const itemButtonElements = useRef<(HTMLButtonElement | null)[]>([]);
 
   const countTrashItems = useCallback(
@@ -79,11 +90,12 @@ export function Dock(): JSX.Element {
           setBouncingAppId(undefined);
         }, launchBounceDurationInMilliseconds);
       }
-      openApp(dockEntry.appManifest.id);
+      activateApp(dockEntry.appManifest.id);
     } else if (dockEntry.kind === 'minimized-window') {
       windowManagerActions.restoreWindow(dockEntry.windowState.id);
+    } else {
+      openApp(finderAppId, trashFolderPath);
     }
-    // The Trash opens in Finder, which arrives in Phase 2.
   }
 
   /**
@@ -92,7 +104,7 @@ export function Dock(): JSX.Element {
    * @param actionId - The chosen action.
    */
   function runDockMenuAction(dockEntry: DockEntry, actionId: DockMenuActionId): void {
-    setOpenContextMenu(undefined);
+    hideContextMenu();
     if (actionId === 'empty-trash') {
       fileSystem.emptyTrash().catch((emptyTrashError: unknown) => {
         showNotice(describeFailedAction('empty the Trash', emptyTrashError));
@@ -176,50 +188,52 @@ export function Dock(): JSX.Element {
                   sx={{ mx: 0.5, my: 1, borderColor: 'divider' }}
                 />
               ) : null}
-              <DockItem
-                label={label}
-                accessibleName={accessibleName}
-                icon={
-                  dockEntry.kind === 'trash' ? (
-                    <TrashCanIcon size={64} isFull={dockEntry.isFull} />
-                  ) : (
-                    <dockEntry.appManifest.AppIcon size={64} />
-                  )
-                }
-                pointerX={pointerX}
-                {...(dockEntry.kind === 'app' ? { isRunning: dockEntry.isRunning } : {})}
-                isBouncing={dockEntry.kind === 'app' && bouncingAppId === dockEntry.appManifest.id}
-                tabIndex={entryIndex === focusableItemIndex ? 0 : -1}
-                buttonRef={(buttonElement) => {
-                  itemButtonElements.current[entryIndex] = buttonElement;
-                }}
-                onClick={() => {
-                  setFocusableItemIndex(entryIndex);
-                  activateDockEntry(dockEntry);
-                }}
-                onContextMenu={(contextMenuEvent) => {
-                  contextMenuEvent.preventDefault();
-                  setOpenContextMenu({
-                    anchorElement: contextMenuEvent.currentTarget,
-                    dockEntryKey: dockEntry.key,
-                  });
-                }}
-                onKeyDown={(keyboardEvent) => {
-                  if (moveDockFocus(keyboardEvent.key, entryIndex)) {
-                    keyboardEvent.preventDefault();
+              <DockTrashDropTarget isTrash={dockEntry.kind === 'trash'}>
+                <DockItem
+                  label={label}
+                  accessibleName={accessibleName}
+                  icon={
+                    dockEntry.kind === 'trash' ? (
+                      <TrashCanIcon size={64} isFull={dockEntry.isFull} />
+                    ) : (
+                      <dockEntry.appManifest.AppIcon size={64} />
+                    )
                   }
-                }}
-              />
+                  pointerX={pointerX}
+                  {...(dockEntry.kind === 'app' ? { isRunning: dockEntry.isRunning } : {})}
+                  isBouncing={
+                    dockEntry.kind === 'app' && bouncingAppId === dockEntry.appManifest.id
+                  }
+                  tabIndex={entryIndex === focusableItemIndex ? 0 : -1}
+                  buttonRef={(buttonElement) => {
+                    itemButtonElements.current[entryIndex] = buttonElement;
+                  }}
+                  onClick={() => {
+                    setFocusableItemIndex(entryIndex);
+                    activateDockEntry(dockEntry);
+                  }}
+                  onContextMenu={(contextMenuEvent) => {
+                    contextMenuEvent.preventDefault();
+                    showContextMenu({
+                      anchorElement: contextMenuEvent.currentTarget,
+                      dockEntryKey: dockEntry.key,
+                    });
+                  }}
+                  onKeyDown={(keyboardEvent) => {
+                    if (moveDockFocus(keyboardEvent.key, entryIndex)) {
+                      keyboardEvent.preventDefault();
+                    }
+                  }}
+                />
+              </DockTrashDropTarget>
             </Fragment>
           );
         })}
       </Box>
       <Menu
-        open={contextMenuDockEntry !== undefined}
+        open={isContextMenuOpen && contextMenuDockEntry !== undefined}
         anchorEl={openContextMenu?.anchorElement}
-        onClose={() => {
-          setOpenContextMenu(undefined);
-        }}
+        onClose={hideContextMenu}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
@@ -237,6 +251,43 @@ export function Dock(): JSX.Element {
               </MenuItem>
             ))}
       </Menu>
+    </Box>
+  );
+}
+
+/**
+ * Makes the Dock's Trash accept dragged items (they are moved to the Trash). Other Dock items are
+ * drawn as they are.
+ * @param props - Whether the wrapped item is the Trash, and the item.
+ * @param props.isTrash - Whether the wrapped item is the Trash.
+ * @param props.children - The Dock item.
+ * @returns The item, wrapped in a drop target when it is the Trash.
+ */
+function DockTrashDropTarget({
+  isTrash,
+  children,
+}: {
+  isTrash: boolean;
+  children: ReactNode;
+}): JSX.Element {
+  const { setDropNodeRef, dropTargetAttributes, isDropHighlighted } = useFileDropTarget(
+    'dock',
+    isTrash ? { kind: 'trash' } : undefined,
+  );
+  if (!isTrash) {
+    return <>{children}</>;
+  }
+  return (
+    <Box
+      ref={setDropNodeRef}
+      {...dropTargetAttributes}
+      sx={{
+        borderRadius: 2,
+        bgcolor: isDropHighlighted ? 'rgba(0, 0, 0, 0.18)' : 'transparent',
+        transition: 'background-color 120ms',
+      }}
+    >
+      {children}
     </Box>
   );
 }

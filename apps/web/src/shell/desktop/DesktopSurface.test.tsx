@@ -34,6 +34,16 @@ async function renderDesktopSurface(): Promise<HTMLElement> {
 }
 
 /**
+ * Lists the open windows as app id and launch argument pairs.
+ * @returns The open windows, oldest first.
+ */
+function listOpenWindows() {
+  return Object.values(desktopSession.windowManagerStore.getState().windowsById).map(
+    ({ appId, launchArgument }) => ({ appId, launchArgument }),
+  );
+}
+
+/**
  * Right-clicks a desktop icon and chooses a menu item.
  * @param desktopItemList - The list of desktop items.
  * @param itemName - The icon's name.
@@ -109,19 +119,65 @@ describe('DesktopSurface', () => {
     await userEvent.click(screen.getByTestId('desktop-surface'));
   });
 
-  it('does not offer to open files yet', async () => {
+  it('opens files in Quick Look and folders (through aliases too) in Finder', async () => {
     const desktopItemList = await renderDesktopSurface();
 
-    fireEvent.contextMenu(within(desktopItemList).getByRole('button', { name: 'About Me.txt' }));
+    await chooseIconMenuItem(desktopItemList, 'About Me.txt', 'Open');
+    await userEvent.dblClick(within(desktopItemList).getByRole('button', { name: 'Projects' }));
 
-    expect(await screen.findByRole('menuitem', { name: 'Open' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    await userEvent.keyboard('{Escape}');
+    // Clicking Projects (the first half of the double-click) moves the open Quick Look to it.
     await vi.waitFor(() => {
-      expect(screen.queryByRole('menu')).toBeNull();
+      expect(listOpenWindows()).toEqual([
+        { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/Projects' },
+        { appId: 'finder', launchArgument: '/Users/guest/Projects' },
+      ]);
     });
+  });
+
+  it('toggles Quick Look with Space and follows the selection with the arrow keys', async () => {
+    const desktopItemList = await renderDesktopSurface();
+    const aboutMeIcon = within(desktopItemList).getByRole('button', { name: 'About Me.txt' });
+
+    await userEvent.click(aboutMeIcon);
+    expect(aboutMeIcon).toHaveFocus();
+    await userEvent.keyboard(' ');
+    expect(listOpenWindows()).toEqual([
+      { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/About Me.txt' },
+    ]);
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(within(desktopItemList).getByRole('button', { name: 'Email' })).toHaveFocus();
+    expect(listOpenWindows()).toEqual([
+      { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/Email' },
+    ]);
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+    expect(aboutMeIcon).toHaveFocus();
+
+    await userEvent.keyboard(' ');
+    expect(listOpenWindows()).toEqual([]);
+  });
+
+  it('renames an icon in place, keeping the old name on Escape or when left empty', async () => {
+    const desktopItemList = await renderDesktopSurface();
+
+    await chooseIconMenuItem(desktopItemList, 'About Me.txt', 'Rename');
+    const nameField = await screen.findByRole('textbox', { name: 'Name' });
+    expect(nameField).toHaveFocus();
+    expect(nameField).toHaveValue('About Me.txt');
+    expect([
+      (nameField as HTMLInputElement).selectionStart,
+      (nameField as HTMLInputElement).selectionEnd,
+    ]).toEqual([0, 8]);
+    await userEvent.keyboard('{Escape}');
+    expect(within(desktopItemList).getByRole('button', { name: 'About Me.txt' })).toBeVisible();
+
+    await chooseIconMenuItem(desktopItemList, 'About Me.txt', 'Rename');
+    await userEvent.clear(await screen.findByRole('textbox', { name: 'Name' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name' }), 'Hello.txt{Enter}');
+
+    expect(
+      await within(desktopItemList).findByRole('button', { name: 'Hello.txt' }),
+    ).toBeInTheDocument();
   });
 
   it('reports failures to create folders or trash items', async () => {

@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getInfoAppId } from '../../system/app-registry/app-registry.mts';
+import { finderAppId, getInfoAppId } from '../../system/app-registry/app-registry.mts';
 import type { DesktopSession } from '../../system/desktop-session/desktop-session.mts';
 import { useDesktopNoticeStore } from '../../system/notices/desktop-notice-store.mts';
 import {
@@ -149,24 +149,26 @@ describe('Dock', () => {
     });
   });
 
-  it('clicking the Trash does nothing until Finder exists', async () => {
+  it('clicking the Trash opens it in Finder', async () => {
     renderInDesktopSession(<Dock />, desktopSession);
 
     await userEvent.click(within(getDock()).getByRole('button', { name: 'Trash' }));
 
-    expect(desktopSession.windowManagerStore.getState().windowStackOrder).toEqual([]);
+    expect(Object.values(desktopSession.windowManagerStore.getState().windowsById)).toEqual([
+      expect.objectContaining({ appId: finderAppId, launchArgument: '/Users/guest/.Trash' }),
+    ]);
   });
 
   it('moves keyboard focus with the arrow keys and ignores other keys', async () => {
     renderInDesktopSession(<Dock />, desktopSession);
-    const [aboutDockItem, trashDockItem] = within(getDock()).getAllByRole('button');
-    aboutDockItem?.focus();
+    const [finderDockItem, aboutDockItem] = within(getDock()).getAllByRole('button');
+    finderDockItem?.focus();
 
     await userEvent.keyboard('{ArrowRight}');
-    expect(trashDockItem).toHaveFocus();
-    expect(trashDockItem).toHaveAttribute('tabindex', '0');
+    expect(aboutDockItem).toHaveFocus();
+    expect(aboutDockItem).toHaveAttribute('tabindex', '0');
     await userEvent.keyboard('{a}');
-    expect(trashDockItem).toHaveFocus();
+    expect(aboutDockItem).toHaveFocus();
   });
 
   it('magnifies icons near the pointer and settles when the pointer leaves', () => {
@@ -175,6 +177,6 @@ describe('Dock', () => {
     fireEvent.mouseMove(getDock(), { clientX: 10 });
     fireEvent.mouseLeave(getDock());
 
-    expect(within(getDock()).getAllByRole('button')).toHaveLength(2);
+    expect(within(getDock()).getAllByRole('button')).toHaveLength(3);
   });
 });

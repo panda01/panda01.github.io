@@ -1,13 +1,19 @@
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import type { JSX } from 'react';
-import { Box, Button, Divider, Menu, MenuItem, Typography } from '@mui/material';
-import { aboutThisMacAppId, findAppManifest } from '../../system/app-registry/app-registry.mts';
+import { Box, Button, Divider, IconButton, Menu, MenuItem, Typography } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import {
+  aboutThisMacAppId,
+  findAppManifest,
+  finderAppId,
+} from '../../system/app-registry/app-registry.mts';
 import {
   useDesktopSession,
   useOpenApp,
   useWindowManager,
 } from '../../system/desktop-session/desktop-session-context.tsx';
-import { desktopFolderPath } from '../../system/fs/path-utilities.mts';
+import { createUntitledFolder } from '../../system/item-actions/item-actions.mts';
+import { useMenuState } from '../../system/hooks/use-menu-state.mts';
 import {
   describeFailedAction,
   useDesktopNoticeStore,
@@ -15,10 +21,10 @@ import {
 import { translucentSurfaceBackdropFilter } from '../../system/theme/desktop-theme.mts';
 import { menuBarHeightInPixels } from '../../system/window-manager/window-geometry.mts';
 import { selectFocusedWindow } from '../../system/window-manager/window-manager-store.mts';
-import { createUntitledFolder } from '../desktop/desktop-actions.mts';
 import { SystemLogoIcon } from '../icons/system-icons.tsx';
 import type { FullScreenControls } from '../keyboard/use-full-screen-state.mts';
-import { buildMenuBarMenus } from './menu-bar-menus.mts';
+import { useSpotlightStore } from '../spotlight/spotlight-store.mts';
+import { buildMenuBarMenus, chooseNewFolderLocation } from './menu-bar-menus.mts';
 import type { MenuBarActionId, MenuBarMenu } from './menu-bar-menus.mts';
 import { MenuBarClock } from './MenuBarClock.tsx';
 
@@ -31,7 +37,7 @@ export interface MenuBarProps {
 
 /**
  * The menu bar across the top of the screen: the system (logo) menu, the focused app's name and
- * menus, and the clock.
+ * menus, the Spotlight button, and the clock.
  * @param props - Full-screen controls and the reset request handler.
  * @param props.fullScreenControls - Full-screen state and actions.
  * @param props.onRequestDesktopReset - Shows the reset confirmation.
@@ -41,8 +47,14 @@ export function MenuBar({ fullScreenControls, onRequestDesktopReset }: MenuBarPr
   const { fileSystem, windowManagerStore } = useDesktopSession();
   const openApp = useOpenApp();
   const showNotice = useDesktopNoticeStore((noticeState) => noticeState.showNotice);
+  const openSpotlight = useSpotlightStore((spotlightState) => spotlightState.openSpotlight);
   const focusedWindow = useWindowManager(selectFocusedWindow);
-  const [openMenu, setOpenMenu] = useState<{ menu: MenuBarMenu; anchorElement: HTMLElement }>();
+  const {
+    menuContent: openMenu,
+    isMenuOpen,
+    showMenu,
+    hideMenu,
+  } = useMenuState<{ menu: MenuBarMenu; anchorElement: HTMLElement }>();
   const openMenuElementId = useId();
 
   const focusedAppName =
@@ -60,7 +72,7 @@ export function MenuBar({ fullScreenControls, onRequestDesktopReset }: MenuBarPr
    * @param actionId - The chosen action.
    */
   function runMenuBarAction(actionId: MenuBarActionId): void {
-    setOpenMenu(undefined);
+    hideMenu();
     const windowManagerActions = windowManagerStore.getState();
     switch (actionId) {
       case 'about-this-mac':
@@ -76,10 +88,15 @@ export function MenuBar({ fullScreenControls, onRequestDesktopReset }: MenuBarPr
       case 'reset-desktop':
         onRequestDesktopReset();
         return;
+      case 'new-finder-window':
+        openApp(finderAppId);
+        return;
       case 'new-folder':
-        createUntitledFolder(fileSystem, desktopFolderPath).catch((newFolderError: unknown) => {
-          showNotice(describeFailedAction('create the folder', newFolderError));
-        });
+        createUntitledFolder(fileSystem, chooseNewFolderLocation(focusedWindow)).catch(
+          (newFolderError: unknown) => {
+            showNotice(describeFailedAction('create the folder', newFolderError));
+          },
+        );
         return;
     }
     if (focusedWindow === undefined) {
@@ -126,7 +143,7 @@ export function MenuBar({ fullScreenControls, onRequestDesktopReset }: MenuBarPr
       })}
     >
       {menuBarMenus.map((menuBarMenu) => {
-        const isThisMenuOpen = openMenu?.menu.menuId === menuBarMenu.menuId;
+        const isThisMenuOpen = isMenuOpen && openMenu?.menu.menuId === menuBarMenu.menuId;
         return (
           <Button
             key={menuBarMenu.menuId}
@@ -136,7 +153,7 @@ export function MenuBar({ fullScreenControls, onRequestDesktopReset }: MenuBarPr
             aria-expanded={isThisMenuOpen}
             {...(isThisMenuOpen ? { 'aria-controls': openMenuElementId } : {})}
             onClick={(clickEvent) => {
-              setOpenMenu({ menu: menuBarMenu, anchorElement: clickEvent.currentTarget });
+              showMenu({ menu: menuBarMenu, anchorElement: clickEvent.currentTarget });
             }}
             sx={{
               minWidth: 0,
@@ -157,14 +174,20 @@ export function MenuBar({ fullScreenControls, onRequestDesktopReset }: MenuBarPr
         );
       })}
       <Box sx={{ flex: 1 }} />
+      <IconButton
+        color="inherit"
+        aria-label="Spotlight"
+        onClick={openSpotlight}
+        sx={{ width: 28, height: 24, borderRadius: 1, mr: 0.5 }}
+      >
+        <SearchIcon sx={{ fontSize: 17 }} />
+      </IconButton>
       <MenuBarClock />
       <Menu
         id={openMenuElementId}
-        open={openMenu !== undefined}
+        open={isMenuOpen && openMenu !== undefined}
         anchorEl={openMenu?.anchorElement}
-        onClose={() => {
-          setOpenMenu(undefined);
-        }}
+        onClose={hideMenu}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         transformOrigin={{ vertical: 'top', horizontal: 'left' }}
       >

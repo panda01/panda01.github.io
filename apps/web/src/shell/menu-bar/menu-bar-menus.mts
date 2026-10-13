@@ -1,9 +1,18 @@
+import { finderAppId } from '../../system/app-registry/app-registry.mts';
+import {
+  desktopFolderPath,
+  isPathInsideFolder,
+  trashFolderPath,
+} from '../../system/fs/path-utilities.mts';
+import type { DesktopWindowState } from '../../system/window-manager/window.types.mts';
+
 /** Every action the menu bar can trigger. */
 export type MenuBarActionId =
   | 'about-this-mac'
   | 'toggle-full-screen'
   | 'reset-desktop'
   | 'quit-app'
+  | 'new-finder-window'
   | 'new-folder'
   | 'close-window'
   | 'minimize-window'
@@ -80,6 +89,12 @@ export function buildMenuBarMenus(menuBarContext: MenuBarContext): MenuBarMenu[]
       menuId: 'file',
       buttonLabel: 'File',
       items: [
+        {
+          actionId: 'new-finder-window',
+          label: 'New Finder Window',
+          shortcutHint: '⌥N',
+          isDisabled: false,
+        },
         { actionId: 'new-folder', label: 'New Folder', isDisabled: false },
         {
           actionId: 'close-window',
@@ -104,4 +119,18 @@ export function buildMenuBarMenus(menuBarContext: MenuBarContext): MenuBarMenu[]
       ],
     },
   ];
+}
+
+/**
+ * Decides where File › New Folder creates the folder: in the folder shown by the focused Finder
+ * window, or on the desktop otherwise (and never inside the Trash).
+ * @param focusedWindow - The focused window, if any.
+ * @returns The folder to create the new folder in.
+ */
+export function chooseNewFolderLocation(focusedWindow: DesktopWindowState | undefined): string {
+  const finderFolderPath =
+    focusedWindow?.appId === finderAppId ? focusedWindow.launchArgument : undefined;
+  const canCreateInFinderFolder =
+    finderFolderPath !== undefined && !isPathInsideFolder(finderFolderPath, trashFolderPath);
+  return canCreateInFinderFolder ? finderFolderPath : desktopFolderPath;
 }

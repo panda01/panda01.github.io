@@ -342,7 +342,7 @@ export class VirtualFileSystem {
    * @returns A fresh copy of the file's bytes (safe to use with `instanceof Uint8Array`).
    * @throws {WrongItemKindError} When the path is not a file.
    */
-  async readFileBytes(filePath: string): Promise<Uint8Array> {
+  async readFileBytes(filePath: string): Promise<Uint8Array<ArrayBuffer>> {
     const fileRecord = await this.requireRecord(filePath);
     if (fileRecord.kind !== 'file') {
       throw new WrongItemKindError(filePath, 'file');

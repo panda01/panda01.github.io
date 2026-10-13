@@ -145,5 +145,8 @@ export function getFolderDisplayName(folderPath: string): string {
  */
 export function listPathAndAncestors(itemPath: string): string[] {
   const pathNames = splitPathIntoNames(itemPath);
-  return [rootPath, ...pathNames.map((_, nameIndex) => `/${pathNames.slice(0, nameIndex + 1).join('/')}`)];
+  return [
+    rootPath,
+    ...pathNames.map((_, nameIndex) => `/${pathNames.slice(0, nameIndex + 1).join('/')}`),
+  ];
 }

@@ -27,6 +27,11 @@ export interface AppManifest {
   allowsMultipleWindows: boolean;
   /** Whether the app has a permanent place in the Dock. */
   isShownInDock: boolean;
+  /**
+   * Whether visitors can launch the app themselves (it appears in Spotlight). Helper windows such
+   * as Get Info and Quick Look only open from other apps.
+   */
+  isListedAsApplication: boolean;
   /** Builds a window's title from its launch argument. */
   createWindowTitle: (launchArgument: string | undefined) => string;
 }

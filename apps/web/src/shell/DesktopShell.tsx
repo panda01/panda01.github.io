@@ -13,9 +13,12 @@ import { DesktopSurface } from './desktop/DesktopSurface.tsx';
 import { ResetDesktopDialog } from './desktop/ResetDesktopDialog.tsx';
 import { Wallpaper } from './desktop/Wallpaper.tsx';
 import { Dock } from './dock/Dock.tsx';
+import { blockFileDropsFromComputer } from './drag-and-drop/computer-file-drop-blocker.mts';
+import { FileDragAndDropProvider } from './drag-and-drop/FileDragAndDropProvider.tsx';
 import { useDesktopKeyboardShortcuts } from './keyboard/use-desktop-keyboard-shortcuts.mts';
 import { useFullScreenState } from './keyboard/use-full-screen-state.mts';
 import { MenuBar } from './menu-bar/MenuBar.tsx';
+import { Spotlight } from './spotlight/Spotlight.tsx';
 import { WindowLayer } from './window/WindowLayer.tsx';
 
 /** Notice shown when the browser refuses storage and the desktop lives only in memory. */
@@ -24,7 +27,8 @@ export const storageUnavailableNotice =
 
 /**
  * The running desktop: wallpaper, menu bar, desktop icons, windows and Dock, plus keyboard
- * shortcuts, the reset flow, and notices.
+ * shortcuts, Spotlight, drag-and-drop between them, the reset flow, and notices. Files dragged in
+ * from the visitor's computer are refused (nothing can be uploaded).
  * @returns The desktop.
  */
 export function DesktopShell(): JSX.Element {
@@ -40,6 +44,8 @@ export function DesktopShell(): JSX.Element {
       showNotice(storageUnavailableNotice);
     }
   }, [desktopSession.isStoredInBrowser, showNotice]);
+
+  useEffect(() => blockFileDropsFromComputer(window), []);
 
   /**
    * Resets the desktop behind the boot screen, then shows the fresh desktop.
@@ -71,10 +77,13 @@ export function DesktopShell(): JSX.Element {
         aria-label="khalah.com desktop"
         sx={{ position: 'absolute', top: menuBarHeightInPixels, left: 0, right: 0, bottom: 0 }}
       >
-        <DesktopSurface />
-        <WindowLayer />
-        <Dock />
+        <FileDragAndDropProvider>
+          <DesktopSurface />
+          <WindowLayer />
+          <Dock />
+        </FileDragAndDropProvider>
       </Box>
+      <Spotlight />
       <ResetDesktopDialog
         isOpen={isResetDialogOpen}
         onCancel={() => {

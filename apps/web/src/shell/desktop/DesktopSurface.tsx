@@ -1,26 +1,26 @@
 import { useCallback, useState } from 'react';
-import type { JSX, MouseEvent } from 'react';
-import { Box, Divider, Menu, MenuItem } from '@mui/material';
-import { getInfoAppId } from '../../system/app-registry/app-registry.mts';
-import {
-  useDesktopSession,
-  useOpenApp,
-} from '../../system/desktop-session/desktop-session-context.tsx';
+import type { JSX, MouseEvent, ReactNode } from 'react';
+import { Box, Menu } from '@mui/material';
+import { useDesktopSession } from '../../system/desktop-session/desktop-session-context.tsx';
 import type { FileSystemItem } from '../../system/fs/file-system.types.mts';
-import { desktopFolderPath } from '../../system/fs/path-utilities.mts';
+import { desktopFolderPath, isHiddenItemName } from '../../system/fs/path-utilities.mts';
 import { useLiveQueryResult } from '../../system/hooks/use-live-query-result.mts';
+import { useMenuState } from '../../system/hooks/use-menu-state.mts';
 import {
-  describeFailedAction,
-  useDesktopNoticeStore,
-} from '../../system/notices/desktop-notice-store.mts';
-import {
-  createUntitledFolder,
-  openDesktopItem,
-  openUrlInNewBrowserTab,
-} from './desktop-actions.mts';
-import { listDesktopMenuActions } from './desktop-menu.mts';
-import type { DesktopMenuActionId } from './desktop-menu.mts';
-import { DesktopIcon } from './DesktopIcon.tsx';
+  listFolderBackgroundMenuActions,
+  listItemMenuActions,
+} from '../../system/item-actions/item-menu.mts';
+import { followSelectionInQuickLook } from '../../system/item-actions/quick-look-controls.mts';
+import { useItemActions } from '../../system/item-actions/use-item-actions.mts';
+import { useFileDropTarget } from '../drag-and-drop/use-file-drag-and-drop.mts';
+import { FileItemTile } from '../item-views/FileItemTile.tsx';
+import { itemViewMarker } from '../item-views/item-view-navigation.mts';
+import { renderMenuEntries } from '../item-views/menu-entries.tsx';
+
+const noItems: readonly FileSystemItem[] = [];
+
+/** Id the desktop uses for its items in drag-and-drop. */
+export const desktopPlaceId = 'desktop';
 
 /** Where a right-click menu is open and what it was opened on. */
 interface OpenDesktopMenu {
@@ -29,22 +29,49 @@ interface OpenDesktopMenu {
 }
 
 /**
- * The desktop itself: icons for everything in ~/Desktop (arranged from the top-right like macOS),
- * selection, and right-click menus for icons and for empty space. The icons update live when the
- * Desktop folder changes anywhere (another tab, Finder, or Terminal).
+ * The desktop itself: icons for everything in ~/Desktop (arranged from the top-right like macOS)
+ * that behave like Finder's: click selects, double-click or Enter opens (folders in Finder, files
+ * in Quick Look, links in a new tab), Space toggles Quick Look, icons can be renamed in place and
+ * dragged into folders, Finder windows or the Trash, and items dropped on empty desktop space move
+ * to the Desktop folder. The icons update live when the Desktop folder changes anywhere (another
+ * tab, Finder, or Terminal).
  * @returns The desktop surface.
  */
 export function DesktopSurface(): JSX.Element {
-  const { fileSystem } = useDesktopSession();
-  const openApp = useOpenApp();
-  const showNotice = useDesktopNoticeStore((noticeState) => noticeState.showNotice);
-  const listDesktopItems = useCallback(
-    () => fileSystem.listFolder(desktopFolderPath),
-    [fileSystem],
+  const { fileSystem, windowManagerStore } = useDesktopSession();
+  const itemActions = useItemActions();
+  const listDesktopItems = useCallback(async () => {
+    const desktopFolderItems = await fileSystem.listFolder(desktopFolderPath);
+    return desktopFolderItems.filter((desktopItem) => !isHiddenItemName(desktopItem.name));
+  }, [fileSystem]);
+  const { value: desktopItems } = useLiveQueryResult<readonly FileSystemItem[]>(
+    listDesktopItems,
+    noItems,
   );
-  const { value: desktopItems } = useLiveQueryResult<FileSystemItem[]>(listDesktopItems, []);
-  const [selectedItemId, setSelectedItemId] = useState<string>();
-  const [openDesktopMenu, setOpenDesktopMenu] = useState<OpenDesktopMenu>();
+  const [selectedItemPath, setSelectedItemPath] = useState<string>();
+  const [renamingItemPath, setRenamingItemPath] = useState<string>();
+  const {
+    menuContent: openDesktopMenu,
+    isMenuOpen: isDesktopMenuOpen,
+    showMenu: showDesktopMenuContent,
+    hideMenu: hideDesktopMenu,
+  } = useMenuState<OpenDesktopMenu>();
+  const { setDropNodeRef, dropTargetAttributes } = useFileDropTarget(
+    `${desktopPlaceId}:background`,
+    {
+      kind: 'folder',
+      folderPath: desktopFolderPath,
+    },
+  );
+
+  /**
+   * Selects an icon; an open Quick Look window follows the selection.
+   * @param itemPath - The icon's item.
+   */
+  function selectItem(itemPath: string): void {
+    setSelectedItemPath(itemPath);
+    followSelectionInQuickLook(windowManagerStore, itemPath);
+  }
 
   /**
    * Opens a right-click menu at the pointer.
@@ -52,54 +79,70 @@ export function DesktopSurface(): JSX.Element {
    * @param targetItem - The item right-clicked, or undefined for empty space.
    */
   function showDesktopMenu(
-    contextMenuEvent: MouseEvent,
+    contextMenuEvent: MouseEvent<HTMLElement>,
     targetItem: FileSystemItem | undefined,
   ): void {
-    setOpenDesktopMenu({
+    showDesktopMenuContent({
       position: { top: contextMenuEvent.clientY, left: contextMenuEvent.clientX },
       targetItem,
     });
   }
 
   /**
-   * Carries out a desktop menu action.
-   * @param actionId - The chosen action.
-   * @param targetItem - The item it applies to (undefined for empty-space actions).
+   * Ends renaming an icon, keeping the new name unless it was cancelled.
+   * @param item - The renamed item.
+   * @param requestedName - The typed name, or undefined when cancelled.
    */
-  function runDesktopMenuAction(
-    actionId: DesktopMenuActionId,
-    targetItem: FileSystemItem | undefined,
-  ): void {
-    setOpenDesktopMenu(undefined);
-    if (actionId === 'new-folder') {
-      createUntitledFolder(fileSystem, desktopFolderPath).catch((newFolderError: unknown) => {
-        showNotice(describeFailedAction('create the folder', newFolderError));
-      });
+  function finishRenaming(item: FileSystemItem, requestedName: string | undefined): void {
+    setRenamingItemPath(undefined);
+    if (requestedName === undefined) {
       return;
     }
-    if (targetItem === undefined) {
-      return;
-    }
-    if (actionId === 'open') {
-      openDesktopItem(targetItem, openUrlInNewBrowserTab);
-    } else if (actionId === 'get-info') {
-      openApp(getInfoAppId, targetItem.path);
-    } else {
-      fileSystem.moveToTrash(targetItem.path).catch((trashError: unknown) => {
-        showNotice(describeFailedAction(`move “${targetItem.name}” to the Trash`, trashError));
-      });
-    }
+    void itemActions.renameItem(item, requestedName).then((renamedItem) => {
+      if (renamedItem !== undefined) {
+        setSelectedItemPath(renamedItem.path);
+      }
+    });
+  }
+
+  let menuEntries: ReactNode[] = [];
+  if (openDesktopMenu !== undefined) {
+    const { targetItem } = openDesktopMenu;
+    menuEntries =
+      targetItem === undefined
+        ? renderMenuEntries(
+            listFolderBackgroundMenuActions(desktopFolderPath, desktopItems.length === 0),
+            () => {
+              hideDesktopMenu();
+              void itemActions.createFolderIn(desktopFolderPath);
+            },
+          )
+        : renderMenuEntries(listItemMenuActions(targetItem), (actionId) => {
+            hideDesktopMenu();
+            itemActions.runItemMenuAction(actionId, targetItem, {
+              /**
+               * Opens the icon's name field.
+               * @param itemPath - The item to rename.
+               */
+              startRenamingItem: (itemPath) => {
+                setSelectedItemPath(itemPath);
+                setRenamingItemPath(itemPath);
+              },
+            });
+          });
   }
 
   return (
     <Box
+      ref={setDropNodeRef}
+      {...dropTargetAttributes}
       data-testid="desktop-surface"
       onClick={() => {
-        setSelectedItemId(undefined);
+        setSelectedItemPath(undefined);
       }}
-      onContextMenu={(contextMenuEvent) => {
+      onContextMenu={(contextMenuEvent: MouseEvent<HTMLElement>) => {
         contextMenuEvent.preventDefault();
-        setSelectedItemId(undefined);
+        setSelectedItemPath(undefined);
         showDesktopMenu(contextMenuEvent, undefined);
       }}
       sx={{ position: 'absolute', inset: 0 }}
@@ -107,6 +150,7 @@ export function DesktopSurface(): JSX.Element {
       <Box
         component="ul"
         aria-label="Desktop items"
+        {...itemViewMarker}
         sx={{
           listStyle: 'none',
           m: 0,
@@ -123,47 +167,41 @@ export function DesktopSurface(): JSX.Element {
       >
         {desktopItems.map((desktopItem) => (
           <Box component="li" key={desktopItem.id}>
-            <DesktopIcon
+            <FileItemTile
               item={desktopItem}
-              isSelected={desktopItem.id === selectedItemId}
+              placeId={desktopPlaceId}
+              appearance="on-wallpaper"
+              isSelected={desktopItem.path === selectedItemPath}
+              isRenaming={desktopItem.path === renamingItemPath}
               onSelect={() => {
-                setSelectedItemId(desktopItem.id);
+                selectItem(desktopItem.path);
               }}
               onOpen={() => {
-                runDesktopMenuAction('open', desktopItem);
+                itemActions.openItem(desktopItem);
+              }}
+              onToggleQuickLook={() => {
+                itemActions.toggleQuickLook(desktopItem.path);
               }}
               onOpenContextMenu={(contextMenuEvent) => {
                 showDesktopMenu(contextMenuEvent, desktopItem);
+              }}
+              onSelectNeighbor={selectItem}
+              onFinishRenaming={(requestedName) => {
+                finishRenaming(desktopItem, requestedName);
               }}
             />
           </Box>
         ))}
       </Box>
       <Menu
-        open={openDesktopMenu !== undefined}
+        open={isDesktopMenuOpen && openDesktopMenu !== undefined}
         anchorReference="anchorPosition"
         {...(openDesktopMenu === undefined ? {} : { anchorPosition: openDesktopMenu.position })}
         onClose={() => {
-          setOpenDesktopMenu(undefined);
+          hideDesktopMenu();
         }}
       >
-        {openDesktopMenu === undefined
-          ? null
-          : listDesktopMenuActions(openDesktopMenu.targetItem).flatMap((desktopMenuAction) => [
-              ...(desktopMenuAction.hasDividerBefore === true
-                ? [<Divider key={`${desktopMenuAction.actionId}-divider`} />]
-                : []),
-              <MenuItem
-                key={desktopMenuAction.actionId}
-                disabled={desktopMenuAction.isDisabled}
-                onClick={(clickEvent) => {
-                  clickEvent.stopPropagation();
-                  runDesktopMenuAction(desktopMenuAction.actionId, openDesktopMenu.targetItem);
-                }}
-              >
-                {desktopMenuAction.label}
-              </MenuItem>,
-            ])}
+        {menuEntries}
       </Menu>
     </Box>
   );
