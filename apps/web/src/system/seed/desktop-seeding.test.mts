@@ -200,7 +200,7 @@ describe('default desktop seed', () => {
     expect(currentSeedVersion).toBeGreaterThanOrEqual(1);
   });
 
-  it("links the desktop's GitHub and LinkedIn shortcuts to the owner's profiles", () => {
+  it("links the desktop's GitHub, LinkedIn and Musings shortcuts to the owner's profiles", () => {
     const linkUrlsByPath = Object.fromEntries(
       defaultDesktopSeedEntries.flatMap((seedEntry) =>
         seedEntry.kind === 'link' && seedEntry.linkTarget.kind === 'url'
@@ -211,6 +211,24 @@ describe('default desktop seed', () => {
     expect(linkUrlsByPath).toMatchObject({
       '/Users/guest/Desktop/GitHub': 'https://github.com/panda01',
       '/Users/guest/Desktop/LinkedIn': 'https://www.linkedin.com/in/khalahjonesgolden/',
+      '/Users/guest/Desktop/Musings': 'https://khalah.medium.com/',
     });
+  });
+
+  it("puts the owner's resume and cover letter on the desktop and no Projects folder", () => {
+    const seededFilesByPath = Object.fromEntries(
+      defaultDesktopSeedEntries.flatMap((seedEntry) =>
+        seedEntry.kind === 'file' ? [[seedEntry.path, seedEntry.contentSourcePath]] : [],
+      ),
+    );
+    expect(seededFilesByPath).toMatchObject({
+      '/Users/guest/Desktop/Resume.pdf': 'Desktop/Resume.pdf',
+      '/Users/guest/Desktop/Khalah Jones Golden Cover Letter.pdf':
+        'Desktop/Khalah Jones Golden Cover Letter.pdf',
+    });
+    const isAnyProjectsItemSeeded = defaultDesktopSeedEntries.some((seedEntry) =>
+      /\/Projects(\/|$)/.test(seedEntry.path),
+    );
+    expect(isAnyProjectsItemSeeded).toBe(false);
   });
 });

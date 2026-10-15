@@ -12,6 +12,8 @@ import {
 import type { DesktopSession } from '../../system/desktop-session/desktop-session.mts';
 import { useDesktopNoticeStore } from '../../system/notices/desktop-notice-store.mts';
 import {
+  addTestFolderAliasToDesktop,
+  addTestSubfoldersToDocuments,
   endTestDesktopSession,
   renderInDesktopSession,
   startTestDesktopSession,
@@ -126,28 +128,29 @@ async function clickSidebarLocation(locationName: string): Promise<void> {
 
 describe('Finder navigation', () => {
   it('opens on the home folder, follows the sidebar, path bar and history, and keeps the title current', async () => {
+    await addTestSubfoldersToDocuments(desktopSession);
     const windowId = renderFinder();
-    expect(await findFolderItem('Projects')).toBeInTheDocument();
+    expect(await findFolderItem('Documents')).toBeInTheDocument();
     expect(readWindow(windowId)).toMatchObject({ title: 'guest', launchArgument: '/Users/guest' });
     expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
 
-    await clickSidebarLocation('Projects');
-    await userEvent.dblClick(await findFolderItem('Example Project One'));
+    await clickSidebarLocation('Documents');
+    await userEvent.dblClick(await findFolderItem('Drafts'));
     expect(await findFolderItem('README.txt')).toBeInTheDocument();
     expect(readWindow(windowId)).toMatchObject({
-      title: 'Example Project One',
-      launchArgument: '/Users/guest/Projects/Example Project One',
+      title: 'Drafts',
+      launchArgument: '/Users/guest/Documents/Drafts',
     });
     const pathBar = screen.getByRole('navigation', { name: 'Path' });
     expect(
       within(pathBar)
         .getAllByRole('button')
         .map((pathButton) => pathButton.textContent),
-    ).toEqual(['Macintosh HD', 'Users', 'guest', 'Projects', 'Example Project One']);
+    ).toEqual(['Macintosh HD', 'Users', 'guest', 'Documents', 'Drafts']);
     expect(screen.getByText('1 item')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(await findFolderItem('Example Project Two')).toBeInTheDocument();
+    expect(await findFolderItem('Archive')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Forward' }));
     expect(await findFolderItem('README.txt')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Forward' })).toBeDisabled();
@@ -163,6 +166,7 @@ describe('Finder navigation', () => {
 
   it('opens folders in place, files in Quick Look and links in a new tab, from the keyboard too', async () => {
     const windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    await addTestFolderAliasToDesktop(desktopSession);
     const windowId = renderFinder('/Users/guest/Desktop');
 
     await userEvent.click(await findFolderItem('About Me.txt'));
@@ -180,9 +184,12 @@ describe('Finder navigation', () => {
     );
 
     await userEvent.click(getFolderContents());
-    await userEvent.dblClick(await findFolderItem('Projects'));
+    await userEvent.dblClick(await findFolderItem('Work'));
     await vi.waitFor(() => {
-      expect(readWindow(windowId)?.title).toBe('Projects');
+      expect(readWindow(windowId)).toMatchObject({
+        title: 'Work',
+        launchArgument: '/Users/guest/Work',
+      });
     });
   });
 
@@ -223,8 +230,9 @@ describe('Finder views', () => {
       'About Me.txt',
       'Email',
       'GitHub',
+      'Khalah Jones Golden Cover Letter.pdf',
       'LinkedIn',
-      'Projects',
+      'Musings',
       'Resume.pdf',
     ]);
     const contentsTable = screen.getByRole('table', { name: 'Folder contents' });
@@ -236,7 +244,7 @@ describe('Finder views', () => {
     await userEvent.click(within(contentsTable).getByRole('button', { name: 'Name' }));
     expect(listRowNames()[0]).toBe('Resume.pdf');
     await userEvent.click(within(contentsTable).getByRole('button', { name: 'Size' }));
-    expect(listRowNames().slice(0, 4)).toEqual(['Email', 'GitHub', 'LinkedIn', 'Projects']);
+    expect(listRowNames().slice(0, 4)).toEqual(['Email', 'GitHub', 'LinkedIn', 'Musings']);
   });
 
   it('flips the sort direction when the same heading is clicked again', () => {
@@ -268,6 +276,7 @@ describe('Finder views', () => {
 
   it('shows folders as columns, previews the selected file, and creates folders in a column', async () => {
     await desktopSession.fileSystem.createFolder('/Users/guest/Desktop/Sub');
+    await addTestSubfoldersToDocuments(desktopSession);
     const windowId = renderFinder('/Users/guest/Desktop/Sub');
     await userEvent.click(screen.getByRole('button', { name: 'as Columns' }));
     expect(await screen.findByRole('list', { name: 'guest' })).toBeInTheDocument();
@@ -280,28 +289,31 @@ describe('Finder views', () => {
     expect(await screen.findByText(/^Plain Text Document – \d+ bytes$/)).toBeInTheDocument();
 
     await userEvent.click(
-      within(screen.getByRole('list', { name: 'guest' })).getByRole('button', { name: 'Projects' }),
+      within(screen.getByRole('list', { name: 'guest' })).getByRole('button', {
+        name: 'Documents',
+      }),
     );
-    const projectsColumn = await screen.findByRole('list', { name: 'Projects' });
+    const documentsColumn = await screen.findByRole('list', { name: 'Documents' });
     expect(
-      await within(projectsColumn).findByRole('button', { name: 'Example Project One' }),
+      await within(documentsColumn).findByRole('button', { name: 'Drafts' }),
     ).toBeInTheDocument();
-    expect(readWindow(windowId)?.title).toBe('Projects');
+    expect(readWindow(windowId)?.title).toBe('Documents');
 
-    await chooseFromMenu(projectsColumn, 'New Folder');
+    await chooseFromMenu(documentsColumn, 'New Folder');
     const nameField = await screen.findByRole('textbox', { name: 'Name' });
     await userEvent.clear(nameField);
     await userEvent.type(nameField, 'Column Folder{Enter}');
     expect(
-      await within(screen.getByRole('list', { name: 'Projects' })).findByRole('button', {
+      await within(screen.getByRole('list', { name: 'Documents' })).findByRole('button', {
         name: 'Column Folder',
       }),
     ).toBeInTheDocument();
   });
 
   it('searches the folder and its subfolders, and clears the search when moving elsewhere', async () => {
-    renderFinder('/Users/guest/Projects');
-    await findFolderItem('Example Project One');
+    await addTestSubfoldersToDocuments(desktopSession);
+    renderFinder('/Users/guest/Documents');
+    await findFolderItem('Drafts');
     await userEvent.click(screen.getByRole('button', { name: 'as Columns' }));
 
     const searchField = screen.getByRole('searchbox', { name: 'Search' });

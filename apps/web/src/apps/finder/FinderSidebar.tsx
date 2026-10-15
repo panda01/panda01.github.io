@@ -12,7 +12,6 @@ import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import DesktopMacOutlinedIcon from '@mui/icons-material/DesktopMacOutlined';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
-import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import type { SvgIconProps } from '@mui/material';
 import {
   desktopFolderPath,
@@ -43,7 +42,6 @@ export const finderFavoriteLocations: readonly FinderSidebarLocation[] = [
     folderPath: `${homeFolderPath}/Downloads`,
     LocationIcon: FileDownloadOutlinedIcon,
   },
-  { label: 'Projects', folderPath: `${homeFolderPath}/Projects`, LocationIcon: FolderOutlinedIcon },
 ];
 
 /** The Trash, listed below the favourites. */

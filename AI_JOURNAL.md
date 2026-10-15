@@ -4,6 +4,83 @@ Newest entries first.
 
 ---
 
+## 2026-10-15 16:03 EDT — Cover letter, new resume, Musings link; Projects folder removed (seed v3)
+
+**Intent:** The user asked to:
+
+- add their cover letter to the desktop;
+- replace the resume with the newest version;
+- remove the Projects folder;
+- add a link titled "Musings" that opens khalah.medium.com.
+
+**User decisions:**
+
+- **Cover letter:** shown as `Khalah Jones Golden Cover Letter.pdf`. The source is `~/Downloads/Khalah Jones Golden Cover letter-7.pdf`.
+- **Resume:** `~/Downloads/Khalah C. Jones - Golden Resume 2026-6.pdf` (the user called it "Resume-6.pdf").
+- **Returning visitors:** they keep their Projects folder. Seeding never deletes, and the user chose not to add "retired seed item" logic. New visitors and Reset Desktop get no Projects.
+- **Quick Look:** the user also asked for PDFs to open at double the width. That led to a decision to replace Quick Look with one viewer window per file, named "Finder", with PDFs at 1240×1080 shrunk to fit the screen. The user then said to ignore the Quick Look work for now, so **no Quick Look code changed**. The decisions are recorded under "Later" in `~/.claude/plans/i-would-like-to-lovely-hennessy.md`.
+
+**Files changed:**
+
+- **`content/Desktop/Resume.pdf`:** replaced with the new resume (129,601 bytes).
+- **`content/Desktop/Khalah Jones Golden Cover Letter.pdf` (new):** the cover letter.
+- **`content/Projects/` (deleted):** `Example Project One/README.txt` and `Example Project Two/README.txt`.
+- **`apps/web/src/system/seed/default-desktop-seed.mts`:**
+  - `currentSeedVersion` changed from 2 to 3, so returning visitors receive the new items and an unchanged resume is updated;
+  - `defaultDesktopSeedEntries` drops the Projects folder, its desktop alias and both example project folders and READMEs;
+  - it adds the cover letter file and the `Musings` link (`https://khalah.medium.com/`);
+  - the `projectsFolderPath` constant was removed, and the jsdoc was updated.
+- **`apps/web/src/apps/finder/FinderSidebar.tsx`:** removed the Projects entry from `finderFavoriteLocations` and the unused `FolderOutlinedIcon` import.
+- **`apps/web/src/shell/drag-and-drop/file-drag-and-drop.mts`:** jsdoc example only ("“Projects”" became "“Documents”").
+- **`apps/web/src/test-support/desktop-test-session.tsx`:** new test fixtures that replace the seeded Projects items the tests used to rely on:
+  - `testAliasTargetFolderPath` and `testFolderAliasPath`;
+  - `addTestFolderAliasToDesktop(desktopSession)`: a home "Work" folder plus a desktop alias to it;
+  - `addTestSubfoldersToDocuments(desktopSession)`: `Documents/Drafts` and `Documents/Archive`, each with a README.txt;
+  - the module constant `testDocumentsSubfolderNames`.
+- **Unit tests moved off Projects, keeping what they check:**
+  - `Finder.test.tsx`: navigation, opening an alias in place, list order and sorting (now including the cover letter and Musings), column view, and search;
+  - `DesktopSurface.test.tsx`: the icon list and alias opening;
+  - `drag-and-drop.test.tsx`: dropping onto an alias, and a failed drop;
+  - `use-item-actions.test.tsx`: opening folders and aliases, and the menu Open action;
+  - `QuickLook.test.tsx`: describing an alias;
+  - `Spotlight.test.tsx`: opens Downloads instead of Example Project One;
+  - `desktop-seeding.test.mts`: the link test now covers Musings, and a new test checks that the resume and cover letter are seeded and nothing under Projects is.
+- **E2E (written first and confirmed red: 5 failures for the missing items):**
+  - `e2e/phase-1-desktop.spec.mts`: the seeded icons include the cover letter and Musings, and there is no Projects. The user committed this file during the session (`3cf8734`, `709a469`), along with an early version of the phase-2 spec.
+  - `e2e/phase-2-finder.spec.mts`:
+    - the sidebar and home folder no longer show Projects;
+    - navigation and view switching now go through home → Desktop;
+    - the link test also opens Musings;
+    - the desktop-icons test adds a "Documents alias" fixture and opens the cover letter;
+    - the Spotlight accessibility check searches "resume" instead of "project".
+  - `e2e/support/finder-test-helpers.mts`:
+    - new `storeFolderAliasInVisitorDesktop`;
+    - `storeFileInVisitorDesktop` now calls a shared private `storeFixtureItemInVisitorDesktop`, with a new `FixtureItem` type;
+    - fixture ids now include the item name;
+    - `stubExternalWebsites` also stubs `khalah.medium.com`;
+    - jsdoc examples were updated.
+- **Outside the repo:**
+  - the plan file's Default content row, the Phase 1–3 acceptance lines (Terminal now uses `cd Documents` / `cd Doc<Tab>`) and the "Later" list;
+  - the project memory.
+
+**Verification:**
+
+- `npm run verify`: exit 0, 51 files and 403 tests passed, coverage 99.72 / 97.39 / 99.65 / 99.71.
+- `npx playwright test --project=desktop-chromium --project=desktop-webkit`: 64/64 passed. The neko project was not run, because nothing it covers changed.
+- **Manual check with Playwright (MCP):**
+  - **Setup:** stashed the tracked changes, ran the old site, reset to a clean v2 desktop (old resume, 129,602 bytes), then restored the stash (the stash list is empty again) and reloaded.
+  - **Returning visitor:**
+    - the desktop upgraded to seed v3;
+    - the resume became the new one (129,601 bytes; "Freelance Software Engineer" is shown);
+    - the cover letter was added and renders in Quick Look;
+    - Musings opened `https://khalah.medium.com/` in a new tab;
+    - Projects stayed.
+  - **After Reset Desktop (fresh visitor):** 7 icons and no Projects. Finder's sidebar shows Desktop, Documents, Downloads and Trash, and the home folder holds 3 items.
+  - **Dev server:** health check and homepage were OK; servers stopped afterwards, ports 5317/5318 free.
+  - **Screenshots:** `claude_tmp/seed-upgrade-0*.png`.
+
+---
+
 ## 2026-10-13 11:36 EDT — GitHub Pages deployment for the frontend (awaiting the user's push)
 
 **Intent:** The user decided to keep the site frontend-only for now and publish `apps/web` as a static site on GitHub

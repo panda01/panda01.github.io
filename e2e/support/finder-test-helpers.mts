@@ -6,7 +6,7 @@ import { measureElement } from './desktop-test-helpers.mts';
  * Finds a Finder (or Quick Look) window by its exact title. A Finder window's title is the name of
  * the folder it shows, so locating it by title also checks that navigation updated the title.
  * @param page - The page showing the desktop.
- * @param windowTitle - The exact window title, for example "Projects".
+ * @param windowTitle - The exact window title, for example "Documents".
  * @returns The window locator.
  */
 export function findWindowTitled(page: Page, windowTitle: string): Locator {
@@ -63,7 +63,7 @@ export async function openFinderFromDock(page: Page): Promise<Locator> {
  * Clicks a location in a Finder window's sidebar and waits for the window to show it.
  * @param page - The page showing the desktop.
  * @param finderWindow - The Finder window whose sidebar to use.
- * @param locationName - The sidebar entry, for example "Projects" or "Trash".
+ * @param locationName - The sidebar entry, for example "Documents" or "Trash".
  * @returns The same window, now located by its new title.
  */
 export async function goToSidebarLocation(
@@ -156,10 +156,16 @@ export async function dragElementOnto(
  * @returns Resolves once the stub routes are installed.
  */
 export async function stubExternalWebsites(browserContext: BrowserContext): Promise<void> {
-  await browserContext.route(/^https:\/\/(github\.com|www\.linkedin\.com)\//, (route) =>
-    route.fulfill({ contentType: 'text/html', body: '<title>Stubbed page</title>' }),
+  await browserContext.route(
+    /^https:\/\/(github\.com|www\.linkedin\.com|khalah\.medium\.com)\//,
+    (route) => route.fulfill({ contentType: 'text/html', body: '<title>Stubbed page</title>' }),
   );
 }
+
+/** A file or folder alias that a test stores straight into the visitor's saved desktop. */
+type FixtureItem =
+  | { kind: 'file'; name: string; mimeType: string; contentBase64: string }
+  | { kind: 'link'; name: string; targetFolderPath: string };
 
 /**
  * Stores a file directly in the visitor's saved desktop (IndexedDB), as a test fixture. Visitors
@@ -179,8 +185,53 @@ export async function storeFileInVisitorDesktop(
   mimeType: string,
   fileContentBase64: string,
 ): Promise<void> {
+  await storeFixtureItemInVisitorDesktop(page, folderPath, {
+    kind: 'file',
+    name: fileName,
+    mimeType,
+    contentBase64: fileContentBase64,
+  });
+}
+
+/**
+ * Stores a folder alias directly in the visitor's saved desktop (IndexedDB), as a test fixture.
+ * The default desktop has no folder alias of its own, and visitors cannot make one. Reload the
+ * page afterwards so the desktop reads it.
+ * @param page - A page that has already booted the desktop once.
+ * @param folderPath - Absolute path of the existing folder that gets the alias, for example
+ *   "/Users/guest/Desktop".
+ * @param aliasName - Name of the new alias.
+ * @param targetFolderPath - Absolute path of the folder the alias opens.
+ * @returns Resolves once the alias is stored.
+ */
+export async function storeFolderAliasInVisitorDesktop(
+  page: Page,
+  folderPath: string,
+  aliasName: string,
+  targetFolderPath: string,
+): Promise<void> {
+  await storeFixtureItemInVisitorDesktop(page, folderPath, {
+    kind: 'link',
+    name: aliasName,
+    targetFolderPath,
+  });
+}
+
+/**
+ * Stores one fixture item (a file or a folder alias) directly in the visitor's saved desktop
+ * (IndexedDB), the way the desktop itself would store it.
+ * @param page - A page that has already booted the desktop once.
+ * @param folderPath - Absolute path of the existing folder that gets the item.
+ * @param fixtureItem - The item to store.
+ * @returns Resolves once the item is stored.
+ */
+async function storeFixtureItemInVisitorDesktop(
+  page: Page,
+  folderPath: string,
+  fixtureItem: FixtureItem,
+): Promise<void> {
   await page.evaluate(
-    async (fixtureFile) => {
+    async (fixture) => {
       const database = await new Promise<IDBDatabase>((resolve, reject) => {
         const openRequest = indexedDB.open('khalah-desktop');
         openRequest.onsuccess = () => {
@@ -193,7 +244,7 @@ export async function storeFileInVisitorDesktop(
       const nodeStore = database.transaction('nodes', 'readwrite').objectStore('nodes');
       const childByParentAndName = nodeStore.index('[parentId+name]');
       let parentId = 'root';
-      for (const folderName of fixtureFile.folderPath.split('/').filter(Boolean)) {
+      for (const folderName of fixture.folderPath.split('/').filter(Boolean)) {
         const folderRecord = await new Promise<{ id: string } | undefined>((resolve) => {
           const lookup = childByParentAndName.get([parentId, folderName]);
           lookup.onsuccess = () => {
@@ -201,35 +252,52 @@ export async function storeFileInVisitorDesktop(
           };
         });
         if (folderRecord === undefined) {
-          throw new Error(`Folder ${fixtureFile.folderPath} does not exist.`);
+          throw new Error(`Folder ${fixture.folderPath} does not exist.`);
         }
         parentId = folderRecord.id;
       }
-      const fileBytes = Uint8Array.from(atob(fixtureFile.contentBase64), (character) =>
-        character.charCodeAt(0),
-      );
+      const { item } = fixture;
       const creationTime = Date.now();
-      await new Promise<void>((resolve, reject) => {
-        const addition = nodeStore.add({
-          id: `fixture-${String(creationTime)}`,
-          parentId,
-          name: fixtureFile.fileName,
+      const sharedItemFields = {
+        id: `fixture-${String(creationTime)}-${item.name}`,
+        parentId,
+        name: item.name,
+        createdAt: creationTime,
+        modifiedAt: creationTime,
+      };
+      let fixtureRecord: Record<string, unknown>;
+      const isFileFixture = item.kind === 'file';
+      if (isFileFixture) {
+        const fileBytes = Uint8Array.from(atob(item.contentBase64), (character) =>
+          character.charCodeAt(0),
+        );
+        fixtureRecord = {
+          ...sharedItemFields,
           kind: 'file',
-          mimeType: fixtureFile.mimeType,
+          mimeType: item.mimeType,
           sizeInBytes: fileBytes.byteLength,
           content: fileBytes,
-          createdAt: creationTime,
-          modifiedAt: creationTime,
-        });
+        };
+      } else {
+        fixtureRecord = {
+          ...sharedItemFields,
+          kind: 'link',
+          mimeType: 'application/x-link',
+          sizeInBytes: 0,
+          linkTarget: { kind: 'path', path: item.targetFolderPath },
+        };
+      }
+      await new Promise<void>((resolve, reject) => {
+        const addition = nodeStore.add(fixtureRecord);
         addition.onsuccess = () => {
           resolve();
         };
         addition.onerror = () => {
-          reject(new Error('Could not store the fixture file.'));
+          reject(new Error(`Could not store the fixture ${item.kind}.`));
         };
       });
       database.close();
     },
-    { folderPath, fileName, mimeType, contentBase64: fileContentBase64 },
+    { folderPath, item: fixtureItem },
   );
 }

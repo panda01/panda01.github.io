@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DesktopSession } from '../../system/desktop-session/desktop-session.mts';
 import { useDesktopNoticeStore } from '../../system/notices/desktop-notice-store.mts';
 import {
+  addTestFolderAliasToDesktop,
   endTestDesktopSession,
   renderInDesktopSession,
   startTestDesktopSession,
@@ -66,7 +67,15 @@ describe('DesktopSurface', () => {
       within(desktopItemList)
         .getAllByRole('button')
         .map((iconButton) => iconButton.getAttribute('aria-label')),
-    ).toEqual(['About Me.txt', 'Email', 'GitHub', 'LinkedIn', 'Projects', 'Resume.pdf']);
+    ).toEqual([
+      'About Me.txt',
+      'Email',
+      'GitHub',
+      'Khalah Jones Golden Cover Letter.pdf',
+      'LinkedIn',
+      'Musings',
+      'Resume.pdf',
+    ]);
   });
 
   it('creates a new folder from the empty-space menu', async () => {
@@ -120,16 +129,17 @@ describe('DesktopSurface', () => {
   });
 
   it('opens files in Quick Look and folders (through aliases too) in Finder', async () => {
+    await addTestFolderAliasToDesktop(desktopSession);
     const desktopItemList = await renderDesktopSurface();
 
     await chooseIconMenuItem(desktopItemList, 'About Me.txt', 'Open');
-    await userEvent.dblClick(within(desktopItemList).getByRole('button', { name: 'Projects' }));
+    await userEvent.dblClick(within(desktopItemList).getByRole('button', { name: 'Work' }));
 
-    // Clicking Projects (the first half of the double-click) moves the open Quick Look to it.
+    // Clicking the Work alias (the first half of the double-click) moves the open Quick Look to it.
     await vi.waitFor(() => {
       expect(listOpenWindows()).toEqual([
-        { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/Projects' },
-        { appId: 'finder', launchArgument: '/Users/guest/Projects' },
+        { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/Work' },
+        { appId: 'finder', launchArgument: '/Users/guest/Work' },
       ]);
     });
   });

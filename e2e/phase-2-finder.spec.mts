@@ -16,6 +16,7 @@ import {
   goToSidebarLocation,
   openFinderFromDock,
   storeFileInVisitorDesktop,
+  storeFolderAliasInVisitorDesktop,
   stubExternalWebsites,
 } from './support/finder-test-helpers.mts';
 
@@ -102,12 +103,13 @@ test.describe('Phase 2: Finder, Quick Look and Spotlight', () => {
     await expect(contentsTable.getByRole('row', { name: /^Desktop/ })).toBeVisible();
 
     await homeWindow.getByRole('button', { name: 'as Columns' }).click();
-    await expect(homeWindow.getByRole('list', { name: 'Users', exact: true })).toBeVisible();
-    await homeWindow
-      .getByRole('list', { name: 'guest', exact: true })
-      .getByRole('button', { name: 'Desktop' })
-      .click();
+    const homeColumn = homeWindow.getByRole('list', { name: 'guest', exact: true });
+    await expect(homeColumn).toBeVisible();
+    await homeColumn.getByRole('button', { name: 'Desktop' }).click();
     const desktopFolderWindow = findWindowTitled(page, 'Desktop');
+    await expect(
+      desktopFolderWindow.getByRole('list', { name: 'guest', exact: true }),
+    ).toBeVisible();
     await expect(
       desktopFolderWindow
         .getByRole('list', { name: 'Desktop', exact: true })
@@ -359,21 +361,35 @@ test.describe('Phase 2: Finder, Quick Look and Spotlight', () => {
       'Desktop',
     );
 
-    const newTabPromise = context.waitForEvent('page');
+    const gitHubTabPromise = context.waitForEvent('page');
     await folderItemIn(desktopFolderWindow, 'GitHub').dblclick();
-    const gitHubTab = await newTabPromise;
+    const gitHubTab = await gitHubTabPromise;
 
     expect(gitHubTab.url()).toBe('https://github.com/panda01');
+
+    const musingsTabPromise = context.waitForEvent('page');
+    await folderItemIn(desktopFolderWindow, 'Musings').dblclick();
+    const musingsTab = await musingsTabPromise;
+
+    expect(musingsTab.url()).toBe('https://khalah.medium.com/');
   });
 
   test('desktop icons open folders and aliases in Finder and files in Quick Look', async ({
     page,
   }) => {
     await openDesktopAndWaitForBoot(page);
+    // The default desktop has no folder alias of its own, so the test adds one.
+    await storeFolderAliasInVisitorDesktop(
+      page,
+      '/Users/guest/Desktop',
+      'Documents alias',
+      '/Users/guest/Documents',
+    );
+    await page.reload();
+    await waitForDesktopBootToFinish(page);
 
-    await desktopItemNamed(page, 'Projects').dblclick();
-    const projectsWindow = findWindowTitled(page, 'Projects');
-    await expect(folderItemIn(projectsWindow, 'Example Project One')).toBeVisible();
+    await desktopItemNamed(page, 'Documents alias').dblclick();
+    await expect(findWindowTitled(page, 'Documents')).toBeVisible();
 
     await desktopItemNamed(page, 'About Me.txt').dblclick();
     await expect(findWindowTitled(page, 'About Me.txt').getByText(aboutMeFirstLine)).toBeVisible();
@@ -382,6 +398,11 @@ test.describe('Phase 2: Finder, Quick Look and Spotlight', () => {
     await desktopItemNamed(page, 'Resume.pdf').click();
     await page.keyboard.press('Space');
     await expect(findWindowTitled(page, 'Resume.pdf')).toBeVisible();
+    await page.keyboard.press('Space');
+
+    await desktopItemNamed(page, 'Khalah Jones Golden Cover Letter.pdf').dblclick();
+    const coverLetterQuickLook = findWindowTitled(page, 'Khalah Jones Golden Cover Letter.pdf');
+    await expect(coverLetterQuickLook.locator('canvas').first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('Spotlight finds apps and files, even with a typo, and opens them', async ({ page }) => {
@@ -450,7 +471,7 @@ test.describe('Phase 2: Finder, Quick Look and Spotlight', () => {
       .getByRole('navigation', { name: 'Menu bar' })
       .getByRole('button', { name: 'Spotlight' })
       .click();
-    await page.getByRole('combobox', { name: 'Spotlight Search' }).fill('project');
+    await page.getByRole('combobox', { name: 'Spotlight Search' }).fill('resume');
     await expect(page.getByRole('option').first()).toBeVisible();
     expect(await findSeriousAccessibilityViolations(page)).toEqual([]);
   });

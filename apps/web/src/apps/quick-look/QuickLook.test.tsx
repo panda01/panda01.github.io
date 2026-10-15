@@ -9,6 +9,7 @@ import {
 } from '../../system/app-registry/app-registry.mts';
 import type { DesktopSession } from '../../system/desktop-session/desktop-session.mts';
 import {
+  addTestFolderAliasToDesktop,
   endTestDesktopSession,
   renderInDesktopSession,
   startTestDesktopSession,
@@ -151,8 +152,9 @@ describe('Quick Look previews', () => {
   });
 
   it('describes folders and aliases', async () => {
-    renderQuickLook('/Users/guest/Desktop/Projects');
-    expect(await screen.findByText('/Users/guest/Projects')).toBeInTheDocument();
+    await addTestFolderAliasToDesktop(desktopSession);
+    renderQuickLook('/Users/guest/Desktop/Work');
+    expect(await screen.findByText('/Users/guest/Work')).toBeInTheDocument();
     expect(screen.getByText('Alias')).toBeInTheDocument();
   });
 

@@ -115,7 +115,7 @@ export function createTopmostDropTargetCollisionDetection(
 /**
  * Describes a drop destination for screen reader announcements.
  * @param dropDestination - Where items would go.
- * @returns For example "the Trash" or "“Projects”".
+ * @returns For example "the Trash" or "“Documents”".
  */
 export function describeDropDestination(dropDestination: FileDropDestination): string {
   return dropDestination.kind === 'trash'

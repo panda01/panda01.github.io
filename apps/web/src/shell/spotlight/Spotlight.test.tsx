@@ -140,11 +140,9 @@ describe('Spotlight', () => {
     await userEvent.keyboard('{Enter}');
     expect(listLaunchArgumentsOf(finderAppId)).toHaveLength(1);
 
-    await userEvent.type(await openSpotlight(), 'example project one');
-    await userEvent.click(await screen.findByRole('option', { name: /^Example Project One/ }));
-    expect(listLaunchArgumentsOf(finderAppId)).toContain(
-      '/Users/guest/Projects/Example Project One',
-    );
+    await userEvent.type(await openSpotlight(), 'downloads');
+    await userEvent.click(await screen.findByRole('option', { name: /^Downloads/ }));
+    expect(listLaunchArgumentsOf(finderAppId)).toContain('/Users/guest/Downloads');
   });
 
   it('closes with Escape or a click elsewhere, starting empty each time', async () => {

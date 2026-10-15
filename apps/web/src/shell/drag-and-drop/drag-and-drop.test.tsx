@@ -5,6 +5,7 @@ import type { DesktopSession } from '../../system/desktop-session/desktop-sessio
 import type { FileSystemItem } from '../../system/fs/file-system.types.mts';
 import { useDesktopNoticeStore } from '../../system/notices/desktop-notice-store.mts';
 import {
+  addTestFolderAliasToDesktop,
   endTestDesktopSession,
   renderInDesktopSession,
   startTestDesktopSession,
@@ -306,9 +307,10 @@ describe('FileDragAndDropProvider', () => {
   }
 
   it('shows a preview while dragging and moves an item dropped on an alias into its folder', async () => {
+    await addTestFolderAliasToDesktop(desktopSession);
     const desktopItemList = await renderDesktopWithDock();
     const aboutMeIcon = within(desktopItemList).getByRole('button', { name: 'About Me.txt' });
-    reportElementUnderPointer(within(desktopItemList).getByRole('button', { name: 'Projects' }));
+    reportElementUnderPointer(within(desktopItemList).getByRole('button', { name: 'Work' }));
 
     act(() => {
       startDragging(aboutMeIcon);
@@ -319,9 +321,7 @@ describe('FileDragAndDropProvider', () => {
     });
 
     await vi.waitFor(async () => {
-      expect(await desktopSession.fileSystem.exists('/Users/guest/Projects/About Me.txt')).toBe(
-        true,
-      );
+      expect(await desktopSession.fileSystem.exists('/Users/guest/Work/About Me.txt')).toBe(true);
     });
     expect(screen.queryByTestId('dragged-item-preview')).toBeNull();
   });
@@ -340,15 +340,16 @@ describe('FileDragAndDropProvider', () => {
   });
 
   it('reports a drop that fails, and ignores drops outside any drop target', async () => {
+    await addTestFolderAliasToDesktop(desktopSession);
     await desktopSession.fileSystem.writeFile(
-      '/Users/guest/Projects/About Me.txt',
+      '/Users/guest/Work/About Me.txt',
       new TextEncoder().encode('already here'),
     );
     const desktopItemList = await renderDesktopWithDock();
 
     dragOnto(
       within(desktopItemList).getByRole('button', { name: 'About Me.txt' }),
-      within(desktopItemList).getByRole('button', { name: 'Projects' }),
+      within(desktopItemList).getByRole('button', { name: 'Work' }),
     );
     await vi.waitFor(() => {
       expect(useDesktopNoticeStore.getState().noticeMessage).toMatch(

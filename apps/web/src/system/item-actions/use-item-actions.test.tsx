@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  addTestFolderAliasToDesktop,
   endTestDesktopSession,
   startTestDesktopSession,
 } from '../../test-support/desktop-test-session.tsx';
@@ -69,18 +70,18 @@ function readNotice(): string | undefined {
 
 describe('opening items', () => {
   it('opens folders in a Finder window, or in place when the caller shows folders itself', async () => {
-    const projectsFolder = await getItem('/Users/guest/Projects');
+    const documentsFolder = await getItem('/Users/guest/Documents');
     const showFolderInPlace = vi.fn();
 
     act(() => {
-      itemActions.openItem(projectsFolder);
-      itemActions.openItem(projectsFolder, { showFolderInPlace });
+      itemActions.openItem(documentsFolder);
+      itemActions.openItem(documentsFolder, { showFolderInPlace });
     });
 
     expect(listOpenWindows()).toEqual([
-      { appId: finderAppId, launchArgument: '/Users/guest/Projects' },
+      { appId: finderAppId, launchArgument: '/Users/guest/Documents' },
     ]);
-    expect(showFolderInPlace).toHaveBeenCalledWith('/Users/guest/Projects');
+    expect(showFolderInPlace).toHaveBeenCalledWith('/Users/guest/Documents');
   });
 
   it('previews files in Quick Look and opens web links in a new tab at once', async () => {
@@ -104,40 +105,42 @@ describe('opening items', () => {
   });
 
   it('opens an alias’s original, and explains when the original is gone', async () => {
-    const projectsAlias = await getItem('/Users/guest/Desktop/Projects');
+    await addTestFolderAliasToDesktop(desktopSession);
+    const workAlias = await getItem('/Users/guest/Desktop/Work');
 
     act(() => {
-      itemActions.openItem(projectsAlias);
+      itemActions.openItem(workAlias);
     });
     await waitFor(() => {
       expect(listOpenWindows()).toEqual([
-        { appId: finderAppId, launchArgument: '/Users/guest/Projects' },
+        { appId: finderAppId, launchArgument: '/Users/guest/Work' },
       ]);
     });
 
-    await desktopSession.fileSystem.remove('/Users/guest/Projects');
+    await desktopSession.fileSystem.remove('/Users/guest/Work');
     act(() => {
-      itemActions.openItem(projectsAlias);
+      itemActions.openItem(workAlias);
     });
     await waitFor(() => {
       expect(readNotice()).toBe(
-        'The alias “Projects” can’t be opened because the original item can’t be found.',
+        'The alias “Work” can’t be opened because the original item can’t be found.',
       );
     });
   });
 
   it('reports an alias that cannot be looked up', async () => {
-    const projectsAlias = await getItem('/Users/guest/Desktop/Projects');
+    await addTestFolderAliasToDesktop(desktopSession);
+    const workAlias = await getItem('/Users/guest/Desktop/Work');
     vi.spyOn(desktopSession.fileSystem, 'findItem').mockRejectedValue(
       new Error('Database closed.'),
     );
 
     act(() => {
-      itemActions.openItem(projectsAlias);
+      itemActions.openItem(workAlias);
     });
 
     await waitFor(() => {
-      expect(readNotice()).toBe("Couldn't open “Projects”. Database closed.");
+      expect(readNotice()).toBe("Couldn't open “Work”. Database closed.");
     });
   });
 });
@@ -180,12 +183,12 @@ describe('right-click menu actions', () => {
   }
 
   it('opens, previews, and shows info', async () => {
-    await runMenuAction('open', '/Users/guest/Projects');
+    await runMenuAction('open', '/Users/guest/Documents');
     await runMenuAction('quick-look', '/Users/guest/Desktop/Resume.pdf');
     await runMenuAction('get-info', '/Users/guest/Desktop/Resume.pdf');
 
     expect(listOpenWindows()).toEqual([
-      { appId: finderAppId, launchArgument: '/Users/guest/Projects' },
+      { appId: finderAppId, launchArgument: '/Users/guest/Documents' },
       { appId: quickLookAppId, launchArgument: '/Users/guest/Desktop/Resume.pdf' },
       { appId: getInfoAppId, launchArgument: '/Users/guest/Desktop/Resume.pdf' },
     ]);

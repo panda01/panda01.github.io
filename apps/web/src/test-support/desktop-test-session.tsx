@@ -60,3 +60,44 @@ export function renderInDesktopSession(
     </ThemeProvider>,
   );
 }
+
+/** Folder in the home folder that the test alias points at. */
+export const testAliasTargetFolderPath = '/Users/guest/Work';
+
+/** The test alias on the desktop (the default desktop has no folder alias of its own). */
+export const testFolderAliasPath = '/Users/guest/Desktop/Work';
+
+/**
+ * Adds a "Work" folder to the home folder and an alias to it on the desktop, so tests can check
+ * how folder aliases behave.
+ * @param desktopSession - The session whose filesystem gets the folder and the alias.
+ * @returns Resolves once both exist.
+ */
+export async function addTestFolderAliasToDesktop(desktopSession: DesktopSession): Promise<void> {
+  await desktopSession.fileSystem.createFolder(testAliasTargetFolderPath);
+  await desktopSession.fileSystem.createLink(testFolderAliasPath, {
+    kind: 'path',
+    path: testAliasTargetFolderPath,
+  });
+}
+
+/** Names of the subfolders that `addTestSubfoldersToDocuments` creates, in order. */
+const testDocumentsSubfolderNames = ['Drafts', 'Archive'] as const;
+
+/**
+ * Adds two subfolders to Documents, each holding a README.txt, so tests can navigate into nested
+ * folders and search them (the default desktop has no nested folders of its own).
+ * @param desktopSession - The session whose filesystem gets the folders.
+ * @returns Resolves once every folder and README exists.
+ */
+export async function addTestSubfoldersToDocuments(desktopSession: DesktopSession): Promise<void> {
+  for (const subfolderName of testDocumentsSubfolderNames) {
+    const subfolderPath = `/Users/guest/Documents/${subfolderName}`;
+    await desktopSession.fileSystem.createFolder(subfolderPath);
+    await desktopSession.fileSystem.writeFile(
+      `${subfolderPath}/README.txt`,
+      new TextEncoder().encode(`${subfolderName} notes`),
+      'text/plain',
+    );
+  }
+}
