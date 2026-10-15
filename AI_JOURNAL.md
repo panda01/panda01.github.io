@@ -4,6 +4,80 @@ Newest entries first.
 
 ---
 
+## 2026-10-13 11:36 EDT — GitHub Pages deployment for the frontend (awaiting the user's push)
+
+**Intent:** The user decided to keep the site frontend-only for now and publish `apps/web` as a static site on GitHub
+Pages. It goes to `https://panda01.github.io/khalah-portfolio/` first; khalah.com comes later as a custom domain.
+
+**Approved plan:** `~/.claude/plans/wobbly-brewing-map.md`.
+
+**User decisions:**
+
+- deploy with a GitHub Actions workflow;
+- CI must pass `npm run verify` and then the build before deploying;
+- prove it with a manual Playwright check only (no new E2E spec, no Playwright config change).
+
+**Why no app code changes:** the frontend never calls the Express server. Every asset URL (favicon, chunks, fonts, the
+pdf.js worker, seed files via `import.meta.glob` `?url`) respects Vite's `base`, and there is no routing. So nothing in
+`apps/web` changes. `base` is passed only on the CI build command, never set in `vite.config.mts`. Setting it there
+would move the dev server, the E2E server and the Vitest web project under the sub-path.
+
+**Files changed:**
+
+- **`.github/workflows/deploy-pages.yml` (new):** workflow "Deploy to GitHub Pages".
+  - **Triggers:** push to `master`, plus `workflow_dispatch`.
+  - **Permissions:** `contents: read`, `pages: write`, `id-token: write`.
+  - **Concurrency:** group `pages`, `cancel-in-progress: false`.
+  - **Job `build`:**
+    1. checkout;
+    2. setup-node from `.nvmrc` with the npm cache;
+    3. `npm ci`;
+    4. `npm run verify`;
+    5. configure-pages;
+    6. `npm run build --workspace @khalah/web -- --base="${PAGES_BASE_PATH}/"`, where `PAGES_BASE_PATH` is
+       configure-pages' `base_path` output: `"/khalah-portfolio"`, or `""` on a custom domain;
+    7. upload-pages-artifact from `apps/web/dist`.
+  - **Job `deploy`:** environment `github-pages`, runs deploy-pages.
+  - **Pinned actions:** each action is pinned to a full commit SHA, from releases at least 2 weeks old: checkout
+    v7.0.1, setup-node v7.0.0, configure-pages v6.0.0, upload-pages-artifact v5.0.0, deploy-pages v5.0.1.
+  - No functions or variables were added (YAML only).
+- **`AI_JOURNAL.md`:** this entry.
+- **Outside the repo:**
+  - the project plan `~/.claude/plans/i-would-like-to-lovely-hennessy.md` gained a "Hosting" decision row and two
+    "Later" items;
+  - the project memory was updated to match.
+
+**Verification:**
+
+- **Prettier:** `prettier --check` on the workflow passes.
+- **CI dry run:** a copy of the tracked and new files was made in `claude_tmp/pages-ci-check/` (deleted afterwards) and
+  run with Node 26.5.1, `CI=true` and `TZ=UTC`.
+  - `npm ci`: 478 packages, 0 vulnerabilities.
+  - `npm run verify`: exit 0, 51 files and 402 tests passed, coverage 99.71 / 97.39 / 99.65 / 99.71.
+  - Build with `--base=/khalah-portfolio/`: succeeded, `dist` is 3.9 MB (the Pages limit is 1 GB). `index.html`
+    references `/khalah-portfolio/favicon.svg` and `/khalah-portfolio/assets/*`.
+  - Note: npm 11.17 warned that the install scripts of `esbuild` and `fsevents` are not covered by `allowScripts`. The
+    build still succeeded.
+- **Built site under `vite preview --base=/khalah-portfolio/` on port 5337:**
+  - `/khalah-portfolio/` returns 200;
+  - `/` returns 302;
+  - the favicon returns 200;
+  - the pdf.js worker `.mjs` is served as `text/javascript`.
+- **Not verified:** the Playwright-driven walkthrough of the built site. The Playwright MCP server hung: `navigate`
+  and then `close` each timed out after 2 minutes. The user chose to stop there.
+- **Not run:** the E2E suite, because no app code or test config changed.
+- **Clean-up:** the preview server was stopped and port 5337 is free. The in-place `apps/web/dist` (built with the
+  sub-path base) is left, and it is gitignored.
+
+**Next (user):**
+
+1. Settings → Pages → Source: GitHub Actions.
+2. Confirm that only `master` can deploy to the `github-pages` environment.
+3. Commit and push.
+4. Then I check the workflow run and the live site.
+
+---
+
 ## 2026-10-12 17:40 EDT — Fix: whole desktop "flashed" in development (Vite reloading the page)
 
 **Intent:** During the Phase 2 check the user saw the whole desktop flash around clicking Documents. Find the cause and fix it; the user approved the config change.
