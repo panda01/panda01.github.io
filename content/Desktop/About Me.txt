@@ -1,7 +1,5 @@
-About Me (placeholder)
+About Me
 
-This file is a placeholder. Replace content/Desktop/About Me.txt in the repository with your own
-introduction: who you are, what you build, and what you're looking for.
+My name is Khalah, I love making software!
 
-Every visitor gets their own copy of this desktop, so they can open, edit, move, or delete this
-file without affecting anyone else.
+My favorite thing is when people tell me what they want if they had a magic wand, and when i can implement it.
