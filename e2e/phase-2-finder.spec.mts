@@ -47,82 +47,75 @@ test.describe('Phase 2: Finder, Quick Look and Spotlight', () => {
 
     await expect(dockFinderButton).toHaveAttribute('data-running', 'true');
     const sidebar = homeWindow.getByRole('navigation', { name: 'Sidebar' });
-    for (const locationName of ['Desktop', 'Documents', 'Downloads', 'Projects', 'Trash']) {
+    for (const locationName of ['Desktop', 'Documents', 'Downloads', 'Trash']) {
       await expect(sidebar.getByRole('button', { name: locationName, exact: true })).toBeVisible();
     }
-    for (const homeFolderName of ['Desktop', 'Documents', 'Downloads', 'Projects']) {
+    await expect(sidebar.getByRole('button', { name: 'Projects', exact: true })).toHaveCount(0);
+    for (const homeFolderName of ['Desktop', 'Documents', 'Downloads']) {
       await expect(folderItemIn(homeWindow, homeFolderName)).toBeVisible();
     }
+    await expect(folderItemIn(homeWindow, 'Projects')).toHaveCount(0);
   });
 
   test('navigating into folders updates the title and path bar, and back/forward return', async ({
     page,
   }) => {
     await openDesktopAndWaitForBoot(page);
-    const projectsWindow = await goToSidebarLocation(
-      page,
-      await openFinderFromDock(page),
-      'Projects',
-    );
+    const homeWindow = await openFinderFromDock(page);
 
-    await expect(folderItemIn(projectsWindow, 'Example Project One')).toBeVisible();
-    await expect(folderItemIn(projectsWindow, 'Example Project Two')).toBeVisible();
+    await expect(folderItemIn(homeWindow, 'Desktop')).toBeVisible();
     await expect(
-      projectsWindow.getByRole('navigation', { name: 'Path' }).getByRole('button'),
-    ).toHaveText(['Macintosh HD', 'Users', 'guest', 'Projects']);
+      homeWindow.getByRole('navigation', { name: 'Path' }).getByRole('button'),
+    ).toHaveText(['Macintosh HD', 'Users', 'guest']);
 
-    await folderItemIn(projectsWindow, 'Example Project One').dblclick();
-    const projectOneWindow = findWindowTitled(page, 'Example Project One');
-    await expect(folderItemIn(projectOneWindow, 'README.txt')).toBeVisible();
+    await folderItemIn(homeWindow, 'Desktop').dblclick();
+    const desktopFolderWindow = findWindowTitled(page, 'Desktop');
+    await expect(folderItemIn(desktopFolderWindow, 'About Me.txt')).toBeVisible();
     await expect(
-      projectOneWindow.getByRole('navigation', { name: 'Path' }).getByRole('button'),
-    ).toHaveText(['Macintosh HD', 'Users', 'guest', 'Projects', 'Example Project One']);
+      desktopFolderWindow.getByRole('navigation', { name: 'Path' }).getByRole('button'),
+    ).toHaveText(['Macintosh HD', 'Users', 'guest', 'Desktop']);
 
-    await projectOneWindow.getByRole('button', { name: 'Back' }).click();
-    await expect(projectsWindow).toBeVisible();
-    await projectsWindow.getByRole('button', { name: 'Forward' }).click();
-    await expect(projectOneWindow).toBeVisible();
+    await desktopFolderWindow.getByRole('button', { name: 'Back' }).click();
+    await expect(homeWindow).toBeVisible();
+    await homeWindow.getByRole('button', { name: 'Forward' }).click();
+    await expect(desktopFolderWindow).toBeVisible();
 
-    await projectOneWindow
+    await desktopFolderWindow
       .getByRole('navigation', { name: 'Path' })
-      .getByRole('button', { name: 'guest' })
+      .getByRole('button', { name: 'Users' })
       .click();
-    await expect(findWindowTitled(page, 'guest')).toBeVisible();
+    await expect(findWindowTitled(page, 'Users')).toBeVisible();
   });
 
   test('the icon, list and column views can be switched', async ({ page }) => {
     await openDesktopAndWaitForBoot(page);
-    const projectsWindow = await goToSidebarLocation(
-      page,
-      await openFinderFromDock(page),
-      'Projects',
-    );
+    const homeWindow = await openFinderFromDock(page);
 
-    await projectsWindow.getByRole('button', { name: 'as List' }).click();
-    const contentsTable = projectsWindow.getByRole('table', { name: 'Folder contents' });
+    await homeWindow.getByRole('button', { name: 'as List' }).click();
+    const contentsTable = homeWindow.getByRole('table', { name: 'Folder contents' });
     await expect(contentsTable.getByRole('columnheader')).toHaveText([
       'Name',
       'Date Modified',
       'Size',
       'Kind',
     ]);
-    await expect(contentsTable.getByRole('row', { name: /Example Project One/ })).toBeVisible();
+    await expect(contentsTable.getByRole('row', { name: /^Desktop/ })).toBeVisible();
 
-    await projectsWindow.getByRole('button', { name: 'as Columns' }).click();
-    await expect(projectsWindow.getByRole('list', { name: 'guest', exact: true })).toBeVisible();
-    await projectsWindow
-      .getByRole('list', { name: 'Projects', exact: true })
-      .getByRole('button', { name: 'Example Project One' })
+    await homeWindow.getByRole('button', { name: 'as Columns' }).click();
+    await expect(homeWindow.getByRole('list', { name: 'Users', exact: true })).toBeVisible();
+    await homeWindow
+      .getByRole('list', { name: 'guest', exact: true })
+      .getByRole('button', { name: 'Desktop' })
       .click();
-    const projectOneWindow = findWindowTitled(page, 'Example Project One');
+    const desktopFolderWindow = findWindowTitled(page, 'Desktop');
     await expect(
-      projectOneWindow
-        .getByRole('list', { name: 'Example Project One', exact: true })
-        .getByRole('button', { name: 'README.txt' }),
+      desktopFolderWindow
+        .getByRole('list', { name: 'Desktop', exact: true })
+        .getByRole('button', { name: 'About Me.txt' }),
     ).toBeVisible();
 
-    await projectOneWindow.getByRole('button', { name: 'as Icons' }).click();
-    await expect(folderItemIn(projectOneWindow, 'README.txt')).toBeVisible();
+    await desktopFolderWindow.getByRole('button', { name: 'as Icons' }).click();
+    await expect(folderItemIn(desktopFolderWindow, 'About Me.txt')).toBeVisible();
   });
 
   test('a new folder is named inline and can be renamed later', async ({ page }) => {

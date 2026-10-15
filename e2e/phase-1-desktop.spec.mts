@@ -60,13 +60,15 @@ test.describe('Phase 1: desktop shell', () => {
     for (const seededItemName of [
       'About Me.txt',
       'Resume.pdf',
-      'Projects',
+      'Khalah Jones Golden Cover Letter.pdf',
       'GitHub',
       'LinkedIn',
+      'Musings',
       'Email',
     ]) {
       await expect(desktopItems.getByRole('button', { name: seededItemName })).toBeVisible();
     }
+    await expect(desktopItems.getByRole('button', { name: 'Projects', exact: true })).toHaveCount(0);
   });
 
   test('the menu bar shows Finder when no window is focused and a clock with the current time', async ({
