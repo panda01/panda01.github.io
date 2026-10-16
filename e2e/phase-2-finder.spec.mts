@@ -400,8 +400,8 @@ test.describe('Phase 2: Finder, Quick Look and Spotlight', () => {
     await expect(findWindowTitled(page, 'Resume.pdf')).toBeVisible();
     await page.keyboard.press('Space');
 
-    await desktopItemNamed(page, 'Khalah Jones Golden Cover Letter.pdf').dblclick();
-    const coverLetterQuickLook = findWindowTitled(page, 'Khalah Jones Golden Cover Letter.pdf');
+    await desktopItemNamed(page, 'Cover Letter.pdf').dblclick();
+    const coverLetterQuickLook = findWindowTitled(page, 'Cover Letter.pdf');
     await expect(coverLetterQuickLook.locator('canvas').first()).toBeVisible({ timeout: 15_000 });
   });
 

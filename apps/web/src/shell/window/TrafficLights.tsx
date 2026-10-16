@@ -81,7 +81,7 @@ export function TrafficLights({
             component="span"
             aria-hidden="true"
             className="traffic-light-symbol"
-            sx={{ opacity: 0 }}
+            sx={{ opacity: 0, marginTop: '-.125em' }}
           >
             {trafficLightButton.symbol}
           </Box>

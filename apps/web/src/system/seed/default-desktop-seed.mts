@@ -46,8 +46,8 @@ export const defaultDesktopSeedEntries: readonly SeedEntry[] = [
   },
   {
     kind: 'file',
-    path: `${desktopFolderPath}/Khalah Jones Golden Cover Letter.pdf`,
-    contentSourcePath: 'Desktop/Khalah Jones Golden Cover Letter.pdf',
+    path: `${desktopFolderPath}/Cover Letter.pdf`,
+    contentSourcePath: 'Desktop/Cover Letter.pdf',
     mimeType: 'application/pdf',
   },
   {

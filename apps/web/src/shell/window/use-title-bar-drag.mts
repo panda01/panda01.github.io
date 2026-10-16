@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { clampWindowBoundsToDesktopArea } from '../../system/window-manager/window-geometry.mts';
 import type { WindowManagerStore } from '../../system/window-manager/window-manager-store.mts';
@@ -25,6 +25,14 @@ export interface TitleBarDragHandlers {
   onPointerMove: (pointerEvent: ReactPointerEvent<HTMLElement>) => void;
   onPointerUp: (pointerEvent: ReactPointerEvent<HTMLElement>) => void;
   onPointerCancel: (pointerEvent: ReactPointerEvent<HTMLElement>) => void;
+}
+
+/** What a title-bar drag gives the window: the pointer handlers and where to show the window. */
+export interface TitleBarDrag {
+  /** Pointer handlers to attach to the window's title bar. */
+  titleBarDragHandlers: TitleBarDragHandlers;
+  /** Where the window is being dragged to right now, or `null` when it is not being dragged. */
+  liveDragPosition: WindowPosition | null;
 }
 
 /** An in-progress drag: which pointer, where it started, and where the window is now. */
@@ -65,21 +73,21 @@ export function computeDraggedWindowPosition(
 }
 
 /**
- * Lets the visitor drag a window by its title bar. While dragging, the window is moved directly
- * (through `showDragPosition`) on every pointer move; the final position is saved to the window
- * manager once, when the pointer is released, and only if the window actually moved (so a click or
- * double-click never un-zooms a zoomed window).
+ * Lets the visitor drag a window by its title bar. While dragging, the window's live position is
+ * kept in React state (`liveDragPosition`) and updated on every pointer move, so the window can be
+ * drawn under the pointer; the final position is saved to the window manager once, when the pointer
+ * is released, and only if the window actually moved (so a click or double-click never un-zooms a
+ * zoomed window).
  * @param windowId - The window being dragged.
  * @param windowManagerStore - The window manager.
- * @param showDragPosition - Moves the window on screen during the drag.
- * @returns Pointer handlers for the title bar.
+ * @returns Pointer handlers for the title bar, and the window's live position during a drag.
  */
 export function useTitleBarDrag(
   windowId: string,
   windowManagerStore: WindowManagerStore,
-  showDragPosition: (windowPosition: WindowPosition) => void,
-): TitleBarDragHandlers {
+): TitleBarDrag {
   const activeDragRef = useRef<ActiveTitleBarDrag | null>(null);
+  const [liveDragPosition, setLiveDragPosition] = useState<WindowPosition | null>(null);
 
   // Starts a drag on a primary-button press that did not begin on a traffic-light button.
   const handlePointerDown = useCallback(
@@ -105,7 +113,7 @@ export function useTitleBarDrag(
     [windowId, windowManagerStore],
   );
 
-  // Moves the window to follow the pointer during a drag.
+  // Moves the window to follow the pointer during a drag (by updating its live position).
   const handlePointerMove = useCallback(
     (pointerEvent: ReactPointerEvent<HTMLElement>) => {
       const activeDrag = activeDragRef.current;
@@ -122,12 +130,13 @@ export function useTitleBarDrag(
         draggedWindow.bounds,
         windowManagerState.desktopAreaSize,
       );
-      showDragPosition(activeDrag.latestPosition);
+      setLiveDragPosition(activeDrag.latestPosition);
     },
-    [windowId, windowManagerStore, showDragPosition],
+    [windowId, windowManagerStore],
   );
 
-  // Ends a drag (pointer released or cancelled) and saves where the window ended up.
+  // Ends a drag (pointer released or cancelled): saves where the window ended up, then stops showing
+  // the live position. Saving first means the window never flashes back to where the drag began.
   const finishDrag = useCallback(
     (pointerEvent: ReactPointerEvent<HTMLElement>) => {
       const activeDrag = activeDragRef.current;
@@ -144,14 +153,18 @@ export function useTitleBarDrag(
       if (didWindowMove) {
         windowManagerStore.getState().moveWindow(windowId, activeDrag.latestPosition);
       }
+      setLiveDragPosition(null);
     },
     [windowId, windowManagerStore],
   );
 
   return {
-    onPointerDown: handlePointerDown,
-    onPointerMove: handlePointerMove,
-    onPointerUp: finishDrag,
-    onPointerCancel: finishDrag,
+    titleBarDragHandlers: {
+      onPointerDown: handlePointerDown,
+      onPointerMove: handlePointerMove,
+      onPointerUp: finishDrag,
+      onPointerCancel: finishDrag,
+    },
+    liveDragPosition,
   };
 }

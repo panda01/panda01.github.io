@@ -60,7 +60,7 @@ test.describe('Phase 1: desktop shell', () => {
     for (const seededItemName of [
       'About Me.txt',
       'Resume.pdf',
-      'Khalah Jones Golden Cover Letter.pdf',
+      'Cover Letter.pdf',
       'GitHub',
       'LinkedIn',
       'Musings',
@@ -126,6 +126,27 @@ test.describe('Phase 1: desktop shell', () => {
     const menuBarBox = await measureElement(page.getByRole('navigation', { name: 'Menu bar' }));
     const boxAfterDragUp = await measureElement(aboutThisMacWindow);
     expect(boxAfterDragUp.y).toBeGreaterThanOrEqual(menuBarBox.y + menuBarBox.height - 1);
+  });
+
+  test('a window follows the pointer while its title bar is being dragged', async ({ page }) => {
+    await openDesktopAndWaitForBoot(page);
+    const aboutThisMacWindow = await openAboutThisMacFromDock(page);
+    const titleBarBox = await measureElement(aboutThisMacWindow.getByTestId('window-title-bar'));
+    const pressX = titleBarBox.x + titleBarBox.width / 2;
+    const pressY = titleBarBox.y + titleBarBox.height / 2;
+
+    const boxBeforeDrag = await measureElement(aboutThisMacWindow);
+    await page.mouse.move(pressX, pressY);
+    await page.mouse.down();
+    await page.mouse.move(pressX + 150, pressY + 80, { steps: 12 });
+    const boxWhileDragging = await measureElement(aboutThisMacWindow);
+    expect(boxWhileDragging.x).toBeCloseTo(boxBeforeDrag.x + 150, -1);
+    expect(boxWhileDragging.y).toBeCloseTo(boxBeforeDrag.y + 80, -1);
+
+    await page.mouse.up();
+    const boxAfterRelease = await measureElement(aboutThisMacWindow);
+    expect(boxAfterRelease.x).toBeCloseTo(boxWhileDragging.x, 0);
+    expect(boxAfterRelease.y).toBeCloseTo(boxWhileDragging.y, 0);
   });
 
   test('a window resizes from its bottom-right corner', async ({ page }) => {

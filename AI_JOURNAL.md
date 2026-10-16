@@ -4,6 +4,104 @@ Newest entries first.
 
 ---
 
+## 2026-10-16 16:14 EDT — Cover letter renamed to "Cover Letter.pdf"
+
+**Intent:** The user asked for the cover letter to just say "Cover Letter". It was shown on the desktop as `Khalah Jones Golden Cover Letter.pdf`. The user also asked where the close, minimize and zoom buttons are laid out. That was answered in chat and needed no code change.
+
+**User decisions:**
+
+- **New visitors only:** `currentSeedVersion` stays at 3. New visitors see `Cover Letter.pdf`. Returning visitors keep the old name and get no duplicate, because seeding never deletes.
+- **Rename the source file too,** so it matches `Resume.pdf`.
+
+**Files changed:**
+
+- **`content/Desktop/Khalah Jones Golden Cover Letter.pdf` → `content/Desktop/Cover Letter.pdf`:** renamed with `mv`, not git. The file content is unchanged.
+- **`apps/web/src/system/seed/default-desktop-seed.mts`:** in `defaultDesktopSeedEntries`, the cover letter's `path` is now `${desktopFolderPath}/Cover Letter.pdf` and its `contentSourcePath` is `Desktop/Cover Letter.pdf`. `currentSeedVersion` is unchanged (3).
+- **`apps/web/src/system/seed/desktop-seeding.test.mts`:** the "resume and cover letter" test expects the new path and source path.
+- **`apps/web/src/shell/desktop/DesktopSurface.test.tsx`:**
+  - "shows every item in the Desktop folder": `Cover Letter.pdf` now sorts second, after `About Me.txt`.
+  - "toggles Quick Look with Space…": ArrowDown from About Me now lands on `Cover Letter.pdf`, so the test expects that, with Quick Look following it.
+- **`apps/web/src/apps/finder/Finder.test.tsx`:**
+  - "shows a folder as a list…": updated the list order.
+  - "opens folders in place…": the first ArrowRight now lands on `Cover Letter.pdf` and the test checks that Quick Look follows it. A second ArrowRight reaches `Email`, so pressing Enter on a link is still tested. No tests were removed.
+- **`e2e/phase-1-desktop.spec.mts`:** the seeded-icons list uses `Cover Letter.pdf`.
+- **`e2e/phase-2-finder.spec.mts`:** the About Me/Resume/cover letter test double-clicks and finds the `Cover Letter.pdf` window.
+
+**Verification:**
+
+- `npm run lint`: clean. Prettier check on the changed files: clean.
+- `npm run test:coverage`: 403/403 passed. Coverage is 99.72% statements, 97.39% branches, 99.65% functions, 99.71% lines.
+- Playwright phase-1 and phase-2 specs: 58 passed, 2 failed. The 2 failures are "Quick Look previews text and PDF files with the Space bar" in Chromium and WebKit: after Escape, the About Me.txt Quick Look stays open (`phase-2-finder.spec.mts:308`).
+  - The test still fails with this rename undone, so the rename didn't cause it. Left for the user to decide.
+- Manual Playwright check against `npm run dev`, after clearing the local IndexedDB to act as a new visitor:
+  - the health check and homepage were OK;
+  - the desktop shows `Cover Letter.pdf` and not the old name;
+  - double-clicking it opens Quick Look titled `Cover Letter.pdf` with the PDF rendered.
+- Dev servers were stopped afterwards.
+
+---
+
+## 2026-10-15 16:25 EDT — Windows follow the mouse while being dragged
+
+**Intent:** The user asked why windows did not move with the mouse while dragged, and asked for that to work. A window stayed still during a drag and jumped to the final spot on release.
+
+**Cause:**
+
+- `useTitleBarDrag` computed the live position on every pointer move and passed it to `showDragPosition`, which called react-rnd's `Rnd.updatePosition()`.
+- That method only does `this.draggable.setState(position)`.
+- react-rnd always renders react-draggable as _controlled_ (the `position` prop came from the store) with dragging disabled.
+- react-draggable uses `state.x/y` only while its own `state.dragging` is true, which never happens when disabled. So the live position was ignored until `moveWindow` updated the store on pointer-up.
+- The existing tests checked only that `showDragPosition` was called and where the window ended up, never where it was during the drag.
+
+**User decisions:**
+
+- Keep the live drag position in React state and pass it to Rnd's `position` prop (not direct DOM `transform` writes).
+- Memoize the window's app content so only the frame re-renders while dragging.
+- The WebKit fix from Phase 1 is kept: every move is start plus total pointer movement, and the store is saved once, on release, only if the window moved.
+
+**Files changed:**
+
+- **`apps/web/src/shell/window/use-title-bar-drag.mts`:**
+  - `useTitleBarDrag(windowId, windowManagerStore)` no longer takes `showDragPosition`. It keeps `liveDragPosition` in `useState` and returns the new exported interface `TitleBarDrag` (`{ titleBarDragHandlers, liveDragPosition }`).
+  - `handlePointerMove` calls `setLiveDragPosition(...)`.
+  - `finishDrag` saves with `moveWindow` first, then clears `liveDragPosition`, so the window never flashes back.
+  - `useState` import added; jsdoc and step comments updated. `TitleBarDragHandlers` is unchanged.
+- **`apps/web/src/shell/window/WindowContentArea.tsx` (new):**
+  - `WindowContentArea`: a `memo` of the private `WindowContentAreaWithoutMemo`, holding the content block moved out of `DesktopWindow`. That block is the scrolling `Box`, `WindowErrorBoundary`, `Suspense` with spinner, and `lazyWindowContentByAppId[appManifest.id]`.
+  - `WindowContentAreaProps`: `windowId`, `appManifest`, `launchArgument?`, `onCloseWindow`.
+- **`apps/web/src/shell/window/DesktopWindow.tsx`:**
+  - Removed `windowFrameRef`, `showDragPosition`, and the `useRef`, `Suspense`, `CircularProgress`, `WindowPosition`, `lazyWindowContentByAppId` and `WindowErrorBoundary` imports.
+  - Added `isWindowBeingDragged`, `shownWindowPosition` (passed to Rnd's `position`) and a stable `closeThisWindow` callback.
+  - Renders `<WindowContentArea />`; jsdoc updated.
+- **`apps/web/src/shell/window/use-title-bar-drag.test.tsx`:**
+  - The four hook tests use the new signature and check `liveDragPosition`, wrapped in `act`, in place of the `showDragPosition` mock. It is `null` before a move, start plus offset during the drag, and `null` after release or cancel. No tests were removed.
+  - The unused `vi` import was dropped.
+  - Regression test: the WindowLayer integration test was renamed to "moves the window with the pointer and keeps it where the pointer was released". It now checks that the window's `transform` changes during the drag and already equals its transform after release.
+  - Transforms are compared rather than checked as exact numbers, because jsdom has no layout and skews react-rnd's parent offset.
+- **`e2e/phase-1-desktop.spec.mts`:**
+  - New test "a window follows the pointer while its title bar is being dragged": it measures the window before `mouse.up()`.
+  - It was written first and confirmed red on Chromium and WebKit (x stayed at 420; 570 expected).
+
+**Verification:**
+
+- `npm run verify`: exit 0, 51 files and 403 tests passed, coverage 99.72 / 97.39 / 99.65 / 99.71.
+- Drag, follow and resize E2E tests repeated 10× on Chromium and WebKit: 60/60 passed.
+- `npx playwright test --project=desktop-chromium --project=desktop-webkit`: 63 passed, 3 failed. All three are in `e2e/phase-2-finder.spec.mts`:
+  - "dragging a file onto a folder moves it…" (Chromium);
+  - "Quick Look previews text and PDF files…" (Chromium and WebKit).
+  - **These failures were already there:** with these changes stashed, the same two tests failed 4/4 on clean `master`, and the working tree was restored afterwards. The only commit since the previous entry's 64/64 run is `3a8305a` (an `About Me.txt` content edit). They were left for the user to decide on.
+- **Manual check with Playwright (MCP), on `npm run dev`:**
+  - **Setup:** `npm run dev:check` was ok for both API health and the homepage.
+  - **Drag:** a Finder window was dragged by (−300, +60). Measured with the button still held, it was at exactly start + offset, under the cursor (screenshot `claude_tmp/window-drag/mid-drag.png`).
+  - **Persistence:** after release, IndexedDB held the new bounds, and the position survived a reload.
+  - **Content:** Finder content still navigates after memoizing (Desktop shows 7 items; `claude_tmp/window-drag/after-reload-finder-desktop.png`).
+  - **Cleanup:** a second drag back to the original spot also followed the cursor mid-drag, which restored the user's window layout.
+  - **Console:** 0 warnings or errors.
+  - **Side observation:** reloading the instant after a release in a _background_ tab once lost the save. That comes from the existing IndexedDB write timing, not this change.
+- `npm run dev:stop`: ports 5317, 5318, 5327 and 5328 are free. Other projects' servers (3000, 3010, 5180) were left running.
+
+---
+
 ## 2026-10-15 16:03 EDT — Cover letter, new resume, Musings link; Projects folder removed (seed v3)
 
 **Intent:** The user asked to:

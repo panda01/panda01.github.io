@@ -1,18 +1,16 @@
-import { Suspense, useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { JSX } from 'react';
-import { Box, CircularProgress, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { motion } from 'motion/react';
 import { Rnd } from 'react-rnd';
 import type { AppManifest } from '../../system/app-registry/app-manifest.types.mts';
 import { useDesktopSession } from '../../system/desktop-session/desktop-session-context.tsx';
 import { smallestWindowSize } from '../../system/window-manager/window-geometry.mts';
 import type { DesktopWindowState } from '../../system/window-manager/window.types.mts';
-import { lazyWindowContentByAppId } from './lazy-window-content.mts';
 import { TrafficLights } from './TrafficLights.tsx';
 import { useTitleBarDrag } from './use-title-bar-drag.mts';
-import type { WindowPosition } from './use-title-bar-drag.mts';
+import { WindowContentArea } from './WindowContentArea.tsx';
 import { createWindowFrameHandlers } from './window-frame-handlers.mts';
-import { WindowErrorBoundary } from './WindowErrorBoundary.tsx';
 
 /** Class on every window's title bar (the part you drag the window by). */
 export const windowTitleBarClassName = 'window-title-bar';
@@ -30,9 +28,9 @@ export interface DesktopWindowProps {
 }
 
 /**
- * One macOS-style window: draggable by its title bar, resizable from every edge, with traffic
- * lights, a centred title, and the app's content (loaded on demand and protected by an error
- * boundary). Pressing anywhere on the window brings it to the front.
+ * One macOS-style window: draggable by its title bar (it follows the pointer while dragged),
+ * resizable from every edge, with traffic lights, a centred title, and the app's content (loaded on
+ * demand and protected by an error boundary). Pressing anywhere on the window brings it to the front.
  * @param props - The window's state, app, and stacking position.
  * @param props.windowState - Position, size, title and flags of the window.
  * @param props.appManifest - The app shown in the window.
@@ -51,23 +49,24 @@ export function DesktopWindow({
     () => createWindowFrameHandlers(windowState.id, windowManagerStore),
     [windowState.id, windowManagerStore],
   );
-  const WindowContent = lazyWindowContentByAppId[appManifest.id];
   const windowManagerActions = windowManagerStore.getState();
-  const windowFrameRef = useRef<Rnd>(null);
-  const showDragPosition = useCallback((windowPosition: WindowPosition) => {
-    windowFrameRef.current?.updatePosition(windowPosition);
-  }, []);
-  const titleBarDragHandlers = useTitleBarDrag(
+  const { titleBarDragHandlers, liveDragPosition } = useTitleBarDrag(
     windowState.id,
     windowManagerStore,
-    showDragPosition,
   );
+  const isWindowBeingDragged = liveDragPosition !== null;
+  const shownWindowPosition = isWindowBeingDragged
+    ? liveDragPosition
+    : { x: windowState.bounds.x, y: windowState.bounds.y };
+  // Stable, so the memoized content area is not re-rendered on every drag move.
+  const closeThisWindow = useCallback(() => {
+    windowManagerStore.getState().closeWindow(windowState.id);
+  }, [windowManagerStore, windowState.id]);
 
   return (
     <Rnd
-      ref={windowFrameRef}
       size={{ width: windowState.bounds.width, height: windowState.bounds.height }}
-      position={{ x: windowState.bounds.x, y: windowState.bounds.y }}
+      position={shownWindowPosition}
       bounds="parent"
       // Title-bar dragging is our own (use-title-bar-drag.mts): react-rnd's could lose movement in Safari.
       disableDragging
@@ -162,31 +161,12 @@ export function DesktopWindow({
               {windowState.title}
             </Typography>
           </Box>
-          <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-            <WindowErrorBoundary
-              appName={appManifest.displayName}
-              onCloseWindow={() => {
-                windowManagerActions.closeWindow(windowState.id);
-              }}
-            >
-              <Suspense
-                fallback={
-                  <Box sx={{ display: 'grid', placeItems: 'center', p: 4 }}>
-                    <CircularProgress size={24} aria-label={`Opening ${appManifest.displayName}`} />
-                  </Box>
-                }
-              >
-                {WindowContent === undefined ? null : (
-                  <WindowContent
-                    windowId={windowState.id}
-                    {...(windowState.launchArgument === undefined
-                      ? {}
-                      : { launchArgument: windowState.launchArgument })}
-                  />
-                )}
-              </Suspense>
-            </WindowErrorBoundary>
-          </Box>
+          <WindowContentArea
+            windowId={windowState.id}
+            appManifest={appManifest}
+            launchArgument={windowState.launchArgument}
+            onCloseWindow={closeThisWindow}
+          />
         </Box>
       </motion.div>
     </Rnd>

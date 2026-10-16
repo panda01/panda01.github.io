@@ -174,6 +174,11 @@ describe('Finder navigation', () => {
     expect(listLaunchArgumentsOf(quickLookAppId)).toEqual(['/Users/guest/Desktop/About Me.txt']);
 
     await userEvent.keyboard('{ArrowRight}');
+    expect(await findFolderItem('Cover Letter.pdf')).toHaveFocus();
+    expect(listLaunchArgumentsOf(quickLookAppId)).toEqual([
+      '/Users/guest/Desktop/Cover Letter.pdf',
+    ]);
+    await userEvent.keyboard('{ArrowRight}');
     expect(await findFolderItem('Email')).toHaveFocus();
     expect(listLaunchArgumentsOf(quickLookAppId)).toEqual(['/Users/guest/Desktop/Email']);
     await userEvent.keyboard('{Enter}');
@@ -228,9 +233,9 @@ describe('Finder views', () => {
     await userEvent.click(screen.getByRole('button', { name: 'as List' }));
     expect(listRowNames()).toEqual([
       'About Me.txt',
+      'Cover Letter.pdf',
       'Email',
       'GitHub',
-      'Khalah Jones Golden Cover Letter.pdf',
       'LinkedIn',
       'Musings',
       'Resume.pdf',

@@ -223,8 +223,7 @@ describe('default desktop seed', () => {
     );
     expect(seededFilesByPath).toMatchObject({
       '/Users/guest/Desktop/Resume.pdf': 'Desktop/Resume.pdf',
-      '/Users/guest/Desktop/Khalah Jones Golden Cover Letter.pdf':
-        'Desktop/Khalah Jones Golden Cover Letter.pdf',
+      '/Users/guest/Desktop/Cover Letter.pdf': 'Desktop/Cover Letter.pdf',
     });
     const isAnyProjectsItemSeeded = defaultDesktopSeedEntries.some((seedEntry) =>
       /\/Projects(\/|$)/.test(seedEntry.path),

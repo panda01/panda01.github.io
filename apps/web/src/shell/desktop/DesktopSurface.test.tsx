@@ -69,9 +69,9 @@ describe('DesktopSurface', () => {
         .map((iconButton) => iconButton.getAttribute('aria-label')),
     ).toEqual([
       'About Me.txt',
+      'Cover Letter.pdf',
       'Email',
       'GitHub',
-      'Khalah Jones Golden Cover Letter.pdf',
       'LinkedIn',
       'Musings',
       'Resume.pdf',
@@ -156,9 +156,9 @@ describe('DesktopSurface', () => {
     ]);
 
     await userEvent.keyboard('{ArrowDown}');
-    expect(within(desktopItemList).getByRole('button', { name: 'Email' })).toHaveFocus();
+    expect(within(desktopItemList).getByRole('button', { name: 'Cover Letter.pdf' })).toHaveFocus();
     expect(listOpenWindows()).toEqual([
-      { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/Email' },
+      { appId: 'quick-look', launchArgument: '/Users/guest/Desktop/Cover Letter.pdf' },
     ]);
     await userEvent.keyboard('{ArrowUp}{ArrowUp}');
     expect(aboutMeIcon).toHaveFocus();
